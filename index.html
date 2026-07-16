@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estructura de Cuadrado Centrado</title>
+    <!-- Comentario de prueba - versión 1.0 -->
+    <style>
+        /* 
+           DETALLES DE IMPLEMENTACIÓN:
+           - Se utiliza Flexbox en el body para lograr un diseño limpio y centrado.
+           - Justify-content y Align-items aseguran que el elemento permanezca en el centro exacto (ejes X e Y).
+           - El cuadrado tiene dimensiones fijas de 120px x 120px.
+        */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            display: flex;          /* Contenedor flexible */
+            justify-content: center; /* Centrado horizontal */
+            align-items: center;     /* Centrado vertical */
+            background-color: #f5f5f5;
+        }
+
+        .cuadrado-central {
+            width: 120px;
+            height: 120px;
+            background-color: #4285f4; /* Azul Google sutil */
+            border-radius: 8px;        /* Bordes suavemente redondeados */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Sombra armoniosa */
+        }
+    </style>
+</head>
+<body>
+    <!-- Elemento centralizado de 120px -->
+    <div class="cuadrado-central"></div>
+</body>
+</html>
