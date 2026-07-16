@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pozo 3D en perspectiva</title>
+    <title>Pozo 3D paramétrico</title>
     <!-- Comentario de prueba - versión 1.0 -->
     <style>
         :root {
             --fondo: #f5f5f5;
             --azul: #4285f4;
+            --texto: #1f2937;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
-        body, html {
+        html, body {
             margin: 0;
             min-height: 100%;
             background: var(--fondo);
+            color: var(--texto);
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         body {
@@ -28,8 +29,45 @@
             padding: 24px;
         }
 
+        .aplicacion {
+            width: min(92vw, 680px);
+            display: grid;
+            gap: 18px;
+        }
+
+        .controles {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            padding: 16px;
+            background: rgba(255,255,255,.75);
+            border: 1px solid rgba(66,133,244,.25);
+            border-radius: 12px;
+        }
+
+        .control {
+            display: grid;
+            gap: 7px;
+        }
+
+        label {
+            font-size: .9rem;
+            font-weight: 700;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--azul);
+            border-radius: 8px;
+            background: var(--fondo);
+            color: var(--texto);
+            font: inherit;
+            cursor: pointer;
+        }
+
         .escena {
-            width: min(78vw, 560px);
+            width: 100%;
             aspect-ratio: 1;
         }
 
@@ -41,62 +79,151 @@
 
         .marco,
         .perspectiva,
-        .division-fondo {
+        .division-fondo,
+        .fondo-pozo {
             fill: none;
             stroke: var(--azul);
             vector-effect: non-scaling-stroke;
         }
 
-        .marco {
-            stroke-width: 3;
-        }
+        .marco { stroke-width: 2.6; }
+        .perspectiva { stroke-width: 1.45; opacity: .76; }
+        .division-fondo { stroke-width: 1.25; opacity: .9; }
+        .fondo-pozo { fill: var(--fondo); stroke-width: 2.8; }
 
-        .perspectiva {
-            stroke-width: 2;
-            opacity: 0.86;
-        }
-
-        .division-fondo {
-            stroke-width: 2.4;
-        }
-
-        .fondo-pozo {
-            fill: var(--fondo);
-            stroke: var(--azul);
-            stroke-width: 3;
-            vector-effect: non-scaling-stroke;
+        @media (max-width: 560px) {
+            .controles { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <main class="escena" aria-label="Pozo tridimensional con fondo dividido para cuatro cubos">
-        <svg class="grilla-3d" viewBox="0 0 500 500" role="img" aria-labelledby="titulo descripcion">
-            <title id="titulo">Pozo 3D en perspectiva</title>
-            <desc id="descripcion">Marcos cuadrados y líneas de fuga convergen hacia un fondo central dividido en cuatro celdas.</desc>
+    <main class="aplicacion">
+        <section class="controles" aria-label="Controles de la grilla tridimensional">
+            <div class="control">
+                <label for="profundidad">Profundidad: <span id="valorProfundidad">5</span></label>
+                <select id="profundidad" aria-label="Cantidad de niveles de profundidad"></select>
+            </div>
+            <div class="control">
+                <label for="cubos">Cubos por lado: <span id="valorCubos">5</span></label>
+                <select id="cubos" aria-label="Cantidad de cubos por lado"></select>
+            </div>
+        </section>
 
-            <!-- Marcos que representan niveles de profundidad -->
-            <rect class="marco" x="25" y="25" width="450" height="450" rx="10" />
-            <rect class="marco" x="80" y="80" width="340" height="340" rx="8" />
-            <rect class="marco" x="130" y="130" width="240" height="240" rx="6" />
-            <rect class="marco" x="175" y="175" width="150" height="150" rx="4" />
-
-            <!-- Fondo del pozo: una superficie 2×2 capaz de alojar cuatro cubos -->
-            <rect class="fondo-pozo" x="220" y="220" width="60" height="60" rx="2" />
-            <line class="division-fondo" x1="250" y1="220" x2="250" y2="280" />
-            <line class="division-fondo" x1="220" y1="250" x2="280" y2="250" />
-
-            <!-- Líneas de fuga prolongadas hasta las esquinas del fondo -->
-            <line class="perspectiva" x1="25" y1="25" x2="220" y2="220" />
-            <line class="perspectiva" x1="475" y1="25" x2="280" y2="220" />
-            <line class="perspectiva" x1="475" y1="475" x2="280" y2="280" />
-            <line class="perspectiva" x1="25" y1="475" x2="220" y2="280" />
-
-            <!-- Líneas de fuga prolongadas desde los puntos medios -->
-            <line class="perspectiva" x1="250" y1="25" x2="250" y2="220" />
-            <line class="perspectiva" x1="475" y1="250" x2="280" y2="250" />
-            <line class="perspectiva" x1="250" y1="475" x2="250" y2="280" />
-            <line class="perspectiva" x1="25" y1="250" x2="220" y2="250" />
-        </svg>
+        <section class="escena" aria-label="Pozo tridimensional configurable">
+            <svg id="grilla" class="grilla-3d" viewBox="0 0 500 500" role="img" aria-labelledby="titulo descripcion">
+                <title id="titulo">Pozo 3D paramétrico</title>
+                <desc id="descripcion">La profundidad y la cantidad de cubos por lado pueden modificarse de forma independiente.</desc>
+            </svg>
+        </section>
     </main>
+
+    <script>
+        const NS = 'http://www.w3.org/2000/svg';
+        const profundidadSelect = document.getElementById('profundidad');
+        const cubosSelect = document.getElementById('cubos');
+        const valorProfundidad = document.getElementById('valorProfundidad');
+        const valorCubos = document.getElementById('valorCubos');
+        const svg = document.getElementById('grilla');
+
+        function cargarOpciones(select, minimo, maximo) {
+            for (let valor = minimo; valor <= maximo; valor++) {
+                const option = document.createElement('option');
+                option.value = valor;
+                option.textContent = valor;
+                select.appendChild(option);
+            }
+        }
+
+        function crearElemento(tipo, atributos, clase) {
+            const elemento = document.createElementNS(NS, tipo);
+            if (clase) elemento.setAttribute('class', clase);
+            for (const [nombre, valor] of Object.entries(atributos)) {
+                elemento.setAttribute(nombre, valor);
+            }
+            return elemento;
+        }
+
+        function interpolar(inicio, fin, t) {
+            return inicio + (fin - inicio) * t;
+        }
+
+        function dibujarPozo() {
+            const profundidad = Number(profundidadSelect.value);
+            const cubos = Number(cubosSelect.value);
+            valorProfundidad.textContent = profundidad;
+            valorCubos.textContent = cubos;
+
+            svg.querySelectorAll('g').forEach(grupo => grupo.remove());
+
+            const grupoPerspectiva = crearElemento('g', {}, 'grupo-perspectiva');
+            const grupoMarcos = crearElemento('g', {}, 'grupo-marcos');
+            const grupoFondo = crearElemento('g', {}, 'grupo-fondo');
+
+            const exterior = { x: 25, y: 25, size: 450 };
+            const fondoSize = 92;
+            const fondo = {
+                x: (500 - fondoSize) / 2,
+                y: (500 - fondoSize) / 2,
+                size: fondoSize
+            };
+
+            for (let nivel = 0; nivel < profundidad; nivel++) {
+                const t = nivel / (profundidad - 1);
+                const suavizado = 1 - Math.pow(1 - t, 1.42);
+                const x = interpolar(exterior.x, fondo.x, suavizado);
+                const y = interpolar(exterior.y, fondo.y, suavizado);
+                const size = interpolar(exterior.size, fondo.size, suavizado);
+                grupoMarcos.appendChild(crearElemento('rect', {
+                    x, y, width: size, height: size,
+                    rx: Math.max(1.5, 10 * (1 - suavizado))
+                }, nivel === profundidad - 1 ? 'fondo-pozo' : 'marco'));
+            }
+
+            for (let i = 0; i <= cubos; i++) {
+                const fraccion = i / cubos;
+                const exteriorPos = exterior.x + exterior.size * fraccion;
+                const fondoPos = fondo.x + fondo.size * fraccion;
+
+                grupoPerspectiva.appendChild(crearElemento('line', {
+                    x1: exteriorPos, y1: exterior.y,
+                    x2: fondoPos, y2: fondo.y
+                }, 'perspectiva'));
+                grupoPerspectiva.appendChild(crearElemento('line', {
+                    x1: exteriorPos, y1: exterior.y + exterior.size,
+                    x2: fondoPos, y2: fondo.y + fondo.size
+                }, 'perspectiva'));
+                grupoPerspectiva.appendChild(crearElemento('line', {
+                    x1: exterior.x, y1: exteriorPos,
+                    x2: fondo.x, y2: fondoPos
+                }, 'perspectiva'));
+                grupoPerspectiva.appendChild(crearElemento('line', {
+                    x1: exterior.x + exterior.size, y1: exteriorPos,
+                    x2: fondo.x + fondo.size, y2: fondoPos
+                }, 'perspectiva'));
+            }
+
+            for (let i = 1; i < cubos; i++) {
+                const posicion = fondo.x + fondo.size * (i / cubos);
+                grupoFondo.appendChild(crearElemento('line', {
+                    x1: posicion, y1: fondo.y,
+                    x2: posicion, y2: fondo.y + fondo.size
+                }, 'division-fondo'));
+                grupoFondo.appendChild(crearElemento('line', {
+                    x1: fondo.x, y1: posicion,
+                    x2: fondo.x + fondo.size, y2: posicion
+                }, 'division-fondo'));
+            }
+
+            svg.append(grupoPerspectiva, grupoMarcos, grupoFondo);
+        }
+
+        cargarOpciones(profundidadSelect, 5, 12);
+        cargarOpciones(cubosSelect, 5, 9);
+        profundidadSelect.value = '5';
+        cubosSelect.value = '5';
+        profundidadSelect.addEventListener('change', dibujarPozo);
+        cubosSelect.addEventListener('change', dibujarPozo);
+        dibujarPozo();
+    </script>
 </body>
 </html>
