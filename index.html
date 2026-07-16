@@ -100,8 +100,8 @@
     <main class="aplicacion">
         <section class="controles" aria-label="Controles de la grilla tridimensional">
             <div class="control">
-                <label for="profundidad">Profundidad: <span id="valorProfundidad">5</span></label>
-                <select id="profundidad" aria-label="Cantidad de niveles de profundidad"></select>
+                <label for="profundidad">Cubos en profundidad: <span id="valorProfundidad">5</span></label>
+                <select id="profundidad" aria-label="Cantidad de cubos apilados en profundidad"></select>
             </div>
             <div class="control">
                 <label for="cubos">Cubos por lado: <span id="valorCubos">5</span></label>
@@ -112,7 +112,7 @@
         <section class="escena" aria-label="Pozo tridimensional configurable">
             <svg id="grilla" class="grilla-3d" viewBox="0 0 500 500" role="img" aria-labelledby="titulo descripcion">
                 <title id="titulo">Pozo 3D paramétrico</title>
-                <desc id="descripcion">La profundidad y la cantidad de cubos por lado pueden modificarse de forma independiente.</desc>
+                <desc id="descripcion">La cantidad de cubos en profundidad y la cantidad de cubos por lado pueden modificarse de forma independiente.</desc>
             </svg>
         </section>
     </main>
@@ -148,9 +148,11 @@
         }
 
         function dibujarPozo() {
-            const profundidad = Number(profundidadSelect.value);
+            const cubosProfundidad = Number(profundidadSelect.value);
             const cubos = Number(cubosSelect.value);
-            valorProfundidad.textContent = profundidad;
+            const cantidadPlanos = cubosProfundidad + 1;
+
+            valorProfundidad.textContent = cubosProfundidad;
             valorCubos.textContent = cubos;
 
             svg.querySelectorAll('g').forEach(grupo => grupo.remove());
@@ -167,8 +169,9 @@
                 size: fondoSize
             };
 
-            for (let nivel = 0; nivel < profundidad; nivel++) {
-                const t = nivel / (profundidad - 1);
+            // N cubos apilados requieren N + 1 planos que delimiten sus intervalos.
+            for (let nivel = 0; nivel < cantidadPlanos; nivel++) {
+                const t = nivel / cubosProfundidad;
                 const suavizado = 1 - Math.pow(1 - t, 1.42);
                 const x = interpolar(exterior.x, fondo.x, suavizado);
                 const y = interpolar(exterior.y, fondo.y, suavizado);
@@ -176,7 +179,7 @@
                 grupoMarcos.appendChild(crearElemento('rect', {
                     x, y, width: size, height: size,
                     rx: Math.max(1.5, 10 * (1 - suavizado))
-                }, nivel === profundidad - 1 ? 'fondo-pozo' : 'marco'));
+                }, nivel === cubosProfundidad ? 'fondo-pozo' : 'marco'));
             }
 
             for (let i = 0; i <= cubos; i++) {
