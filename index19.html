@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Billar Local – 8-Ball &amp; 9-Ball</title>
+<style>
+  :root {
+    --felt: #0a6b3c;
+    --felt-dark: #085530;
+    --wood: #5c3317;
+    --wood-light: #8b5a2b;
+    --cue: #e8d5b5;
+    --bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: #e6edf3;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    max-width: none;
+    margin: 0;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 16px;
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .ctrl-sep {
+    color: #8b949e;
+    font-size: 14px;
+    margin-left: 8px;
+  }
+  #cpu-progress { display: none; align-items: center; gap: 6px; }
+  #cpu-progress.on { display: flex; }
+  #cpu-progress .track {
+    width: 110px; height: 8px;
+    background: #30363d; border-radius: 4px; overflow: hidden;
+  }
+  #cpu-progress-fill {
+    height: 100%; width: 0%;
+    background: #1f6feb; transition: width .08s linear;
+  }
+  #cpu-progress-text { color: #8b949e; font-size: 12px; min-width: 52px; }
+  button {
+    background: #238636;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:hover { background: #2ea043; }
+  button.secondary { background: #21262d; border: 1px solid #30363d; }
+  button.secondary:hover { background: #30363d; }
+  button.active { background: #1f6feb; border: 1px solid #1f6feb; }
+  #info {
+    font-size: 0.8rem;
+    color: #8b949e;
+    min-width: 220px;
+    text-align: right;
+  }
+  #info b { color: #e6edf3; }
+  #canvas-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #010409;
+    overflow: hidden;
+    min-height: 0;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #power-bar {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 12px;
+    background: #21262d;
+    border-radius: 6px;
+    overflow: hidden;
+    display: none;
+    border: 1px solid #30363d;
+  }
+  /* Selector de punto de impacto sobre la blanca */
+  #spin-ui {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background: rgba(22,27,34,0.85);
+    border: 1px solid #30363d;
+    cursor: crosshair;
+    touch-action: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  }
+  #power-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3fb950, #f0883e, #f85149);
+    transition: width 0.05s linear;
+  }
+  #message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(22,27,34,0.92);
+    padding: 18px 28px;
+    border-radius: 10px;
+    border: 1px solid #30363d;
+    font-size: 1.1rem;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    max-width: 80%;
+    white-space: pre-line;
+  }
+  #message.show { opacity: 1; }
+  footer {
+    padding: 6px 16px;
+    font-size: 0.75rem;
+    color: #8b949e;
+    text-align: center;
+    background: #161b22;
+    border-top: 1px solid #30363d;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <h1>🎱 Billar Local</h1>
+    <div class="controls">
+      <button id="btn-8ball" class="secondary">8-Ball</button>
+      <button id="btn-9ball" class="secondary">9-Ball</button>
+      <span class="ctrl-sep">Rival:</span>
+      <button id="btn-local" class="secondary">Local</button>
+      <button id="btn-cpu" class="secondary">CPU</button>
+      <button id="btn-reset">Reiniciar</button>
+      <div id="cpu-progress"><div class="track"><div id="cpu-progress-fill"></div></div><span id="cpu-progress-text">CPU 0%</span></div>
+      <div id="info">Listo</div>
+    </div>
+  </header>
+  <div id="canvas-container">
+    <canvas id="c"></canvas>
+    <canvas id="spin-ui" width="132" height="132" title="Punto de contacto: clic o arrastrá dentro del círculo"></canvas>
+    <div id="power-bar"><div id="power-fill"></div></div>
+    <div id="message"></div>
+  </div>
+  <footer>
+    Apuntá con el mouse · Alejate de la blanca para cargar potencia · Movete lateralmente para corregir el ángulo · ← → ajuste fino · Efecto: círculo inferior derecho (clic/arrastre, doble clic = centrar) o rueda/±/[ ] · Espacio = potencia máxima
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   CONFIGURACIÓN
+   Geometría: tamaños de billar.html (mesa 1000×500, bola r=12)
+   Física: modelo extraído de billiards.js (motor GameTwist),
+   reescalado de 10000×5000 → 1000×500 (factor 0.1 en velocidades)
+   ============================================================ */
+const TABLE_W = 1000;          // unidades lógicas
+const TABLE_H = 500;
+const BALL_R  = 12;            // radio de bola (no se aumentará)
+
+/* --- Constantes físicas extraídas del motor original ---
+   ck=.99975 jh=.8 cm=bm=.9 ys=.2 dm=10 ws=.001 zs=1 ak=.3
+   wo=.8 zo=.05 As=.9997 bk=.85 xo=.9 xs=.05 $j=PI/8
+   Mg=25 (vel. máx. de tiro) · kb=175 (umbral de caída)
+   Recalibrado alrededor de BALL_R=12 para evitar túnel y proporción de caída */
+const DT         = 2.1;              // subpaso reducido de 4.2→2.1 ms: con d=24 (diámetro) y vmax=2.5, desplazamiento relativo máx ~10.5 < 24
+const ROLL_FRICTION = 0.99975;       // ck: rozamiento de rodadura /ms
+const CUSHION_REST  = 0.8;           // jh: restitución de banda
+const BALL_REST     = 0.9;           // bm/cm: restitución bola-bola
+const STOP_SPEED    = 0.02;          // ys: 0.2 * 0.1 (vel. de corte)
+const MAX_SPEED     = 2.5;           // Mg: 25 * 0.1 (unidades/ms)
+const FOLLOW_DECEL  = 0.001;         // ws: decaimiento de follow/draw /ms
+const FOLLOW_ACCEL  = 1;             // dm: aceleración del efecto vertical (10*0.1)
+const FOLLOW_STOP   = 0.05;          // zo
+const SIDE_DECAY    = 0.9997;        // As: decaimiento del efecto lateral /ms
+const SIDE_STOP     = 0.05;          // xs
+const CUSH_SPIN_ANGLE = Math.PI / 8; // $j: desvío angular del efecto en banda
+const CUSH_FA_KEEP  = 0.3;           // ak: follow que sobrevive a la banda
+const CUSH_UA_KEEP  = 0.85;          // bk: efecto lateral que sobrevive a la banda
+const HIT_FA_KEEP   = 0.8;           // wo: follow que sobrevive al choque
+const HIT_UA_KEEP   = 0.9;           // xo: efecto lateral que sobrevive al choque
+/* POCKET_DEPTH: antes 17.5 = 1.46 radios, GameTwist ~0.91 radios → 10.9 */
+const POCKET_DEPTH  = BALL_R * 0.91; // ≈10.92 (antes 17.5), proporción original 0.91*r
+const CUSHION       = BALL_R * 2.3333; // banda ≈28 (calibrada sobre BALL_R)
+
+/* --- Perfiles de tronera (guía: geometría compartida dibujo/colisión/captura)
+   El agujero negro (holeR) es menor que la boca completa (rimR / rimX·rimY).
+   Ya no existe un único POCKET_R: cada uso toma su valor del perfil. */
+const POCKET_PROFILE = Object.freeze({
+  corner: {
+    holeR: BALL_R * 1.35,       // agujero negro ≈16.2
+    rimR: BALL_R * 2.15,        // ensanchamiento verde ≈25.8
+    railGap: BALL_R * 1.3333,   // apertura sobre cada banda ≈16
+    jawOut: BALL_R * 2,         // mandíbula detrás de la nariz de banda
+    captureR: BALL_R * 2.10     // región de captura ≈25.2
+  },
+  side: {
+    holeR: BALL_R * 1.45,       // agujero negro ≈17.4
+    rimX: BALL_R * 2.50,        // embudo horizontal ≈30
+    rimY: BALL_R * 2.15,        // embudo vertical ≈25.8
+    railGap: BALL_R * 2.50,     // apertura sobre la banda ≈30
+    jawOut: BALL_R * 2,
+    captureR: BALL_R * 2.20     // región de captura ≈26.4
+  }
+});
+
+/* Modo depuración de troneras (desactivado en la versión final) */
+const DEBUG_POCKETS = false;
+/* Visual spin derivado de constantes físicas (sustituye 0.018 y 0.012 manuales) */
+const FOLLOW_VISUAL = FOLLOW_ACCEL / BALL_R; // ≈0.0833 rad/ms por unidad de fa
+const ENGLISH_VISUAL = (2 * Math.PI) / 200;  // ≈0.031416 rad/ms por unidad de ua (GameTwist 2π/200)
+
+/* Límites de rodadura del centro de bola (nariz de banda) */
+const BX0 = CUSHION + BALL_R, BX1 = TABLE_W - CUSHION - BALL_R;
+const BY0 = CUSHION + BALL_R, BY1 = TABLE_H - CUSHION - BALL_R;
+
+/* --- Constructores de troneras: una sola geometría para dibujar,
+   colisionar y capturar. (bx,by) es la esquina de reflexión de banda;
+   sx/sy orientan la boca hacia el interior de la mesa. --- */
+function makeCornerPocket(id, bx, by, sx, sy) {
+  const p = POCKET_PROFILE.corner;
+  return {
+    id,
+    type: "corner",
+    x: bx - sx * BALL_R,
+    y: by - sy * BALL_R,
+    holeR: p.holeR,
+    rimR: p.rimR,
+    captureR: p.captureR,
+    railGap: p.railGap,
+    jaws: [
+      { x: bx - sx * p.jawOut, y: by + sy * p.railGap },
+      { x: bx + sx * p.railGap, y: by - sy * p.jawOut }
+    ]
+  };
+}
+
+function makeSidePocket(id, cx, by, sy) {
+  const p = POCKET_PROFILE.side;
+  return {
+    id,
+    type: "side",
+    x: cx,
+    y: by - sy * (BALL_R + 4),
+    holeR: p.holeR,
+    rimX: p.rimX,
+    rimY: p.rimY,
+    captureR: p.captureR,
+    railGap: p.railGap,
+    jaws: [
+      { x: cx - p.railGap, y: by - sy * p.jawOut },
+      { x: cx + p.railGap, y: by - sy * p.jawOut }
+    ]
+  };
+}
+
+function buildPocketGeometry() {
+  return [
+    makeCornerPocket("tl", BX0, BY0,  1,  1),
+    makeSidePocket("tc", TABLE_W / 2, BY0,  1),
+    makeCornerPocket("tr", BX1, BY0, -1,  1),
+    makeCornerPocket("bl", BX0, BY1,  1, -1),
+    makeSidePocket("bc", TABLE_W / 2, BY1, -1),
+    makeCornerPocket("br", BX1, BY1, -1, -1)
+  ];
+}
+
+/* --- Vista y taco ---
+   MARGIN grande para que el taco tenga espacio lógico, pero el escalado
+   para maximizar mesa ya no depende de MARGIN (ver resize()).
+   Taco en proporción reglamentaria: 145 cm / campo 254 cm ≈ 0.57 */
+const MARGIN    = 280;              // espacio lógico para sala y taco
+const VIEW_W    = TABLE_W + 2 * MARGIN;
+const VIEW_H    = TABLE_H + 2 * MARGIN;
+const TABLE_PAD = 24;               // padding mínimo alrededor de la mesa para fit
+const CUE_LEN   = Math.round((TABLE_W - 2 * CUSHION) * 0.57); // ≈ 538
+const CUE_PULL  = 70;      // retroceso visual del taco a potencia máxima
+/* Calibración contra GameTwist (billiards.js):
+   - ns() usa Sq = minlength_powerarrow_click y xv = maxlength_powerarrow_click
+   - power = (d - Sq)/(xv - Sq) con clamp .01→0, 1→1
+   AIM_DEAD = BALL_R+6 = 18 coincide con minlength_powerarrow_click
+   AIM_RANGE = 260 → maxlength = 278, rango usado en original para sensibilidad */
+const AIM_DEAD  = BALL_R + 6;   // 18 = minlength_powerarrow_click
+const AIM_RANGE = 260;          // 278-18 = maxlength-minlength (click)
+const POWER_CLICK_MIN = 18;     // minlength_powerarrow_click (original)
+const POWER_CLICK_MAX = 278;    // maxlength_powerarrow_click = min+range
+/* Visual de flecha de potencia (show) - interpolación original:
+   len = Tq*(1-la)+Cn*la, con Tq=minlength_powerarrow_show, Cn=maxlength */
+const POWER_SHOW_MIN = 14;      // minlength_powerarrow_show (estimado original ~14-20)
+const POWER_SHOW_MAX = 145;     // maxlength_powerarrow_show (estimado original ~140-160)
+
+/* Colores de bolas (estilo clásico) */
+const BALL_COLORS = [
+  null,                        // 0 = blanca
+  "#FFD700", "#0000CD", "#FF0000", "#4B0082", "#FF8C00",
+  "#006400", "#8B0000", "#000000", "#FFD700", "#0000CD",
+  "#FF0000", "#4B0082", "#FF8C00", "#006400", "#8B0000"
+];
+
+/* Helpers 3D para orientación de la marca de tiza */
+function vecLen3(v){ return Math.hypot(v.x, v.y, v.z); }
+function vecNorm3(v){
+  const l = vecLen3(v);
+  return l > 1e-9 ? {x: v.x/l, y: v.y/l, z: v.z/l} : {x:0,y:0,z:1};
+}
+function vecDot3(a,b){ return a.x*b.x + a.y*b.y + a.z*b.z; }
+function vecCross3(a,b){
+  return {x: a.y*b.z - a.z*b.y, y: a.z*b.x - a.x*b.z, z: a.x*b.y - a.y*b.x};
+}
+function rotateVector3(v, axis, ang){
+  const k = vecNorm3(axis);
+  const cosA = Math.cos(ang);
+  const sinA = Math.sin(ang);
+  const dot = vecDot3(k, v);
+  const cross = vecCross3(k, v);
+  return {
+    x: v.x*cosA + cross.x*sinA + k.x*dot*(1-cosA),
+    y: v.y*cosA + cross.y*sinA + k.y*dot*(1-cosA),
+    z: v.z*cosA + cross.z*sinA + k.z*dot*(1-cosA)
+  };
+}
+
+/* ============================================================
+   CLASES
+   ============================================================ */
+class Ball {
+  constructor(id, x, y, isJaw = false) {
+    this.id = id;
+    this.x = x; this.y = y;
+    this.dir = 0;
+    this.speed = 0;
+    this.fa = 0;
+    this.ua = 0;
+    this.Nm = 0;
+    this.pocketed = false;
+    this.isJaw = isJaw;
+    this.r = BALL_R;
+    // Orientación 3D exclusiva (elimina rot antiguo)
+    this.mark = vecNorm3({x: 0.65, y: 0.15, z: 0.75});
+  }
+  get vx() { return Math.cos(this.dir) * this.speed; }
+  get vy() { return -Math.sin(this.dir) * this.speed; }
+  setVel(vx, vy) {
+    this.dir = Math.atan2(-vy, vx);
+    this.speed = Math.hypot(vx, vy);
+  }
+  // Mantener simulación activa mientras exista ua (english residual)
+  get moving() { return this.speed !== 0 || this.fa !== 0 || this.ua !== 0; }
+}
+
+class Table {
+  constructor() {
+    this.balls = [];
+    this.jaws = [];
+    /* Geometría única de troneras: dibujo, colisión y captura salen de aquí */
+    this.pockets = buildPocketGeometry();
+    /* 12 "bolsas" estáticas en las bocas (técnica del motor original,
+       f[22..33]); sus posiciones coinciden con las mandíbulas dibujadas */
+    for (const p of this.pockets) {
+      for (const j of p.jaws) this.jaws.push(new Ball(-1, j.x, j.y, true));
+    }
+  }
+
+  cue() { return this.balls.find(b => b.id === 0); }
+
+  /* Triángulo de 8-ball: 1 al frente, 8 al centro,
+     una esquina lisa y la otra rayada. */
+  rack8Ball() {
+    this.balls = [];
+    this.balls.push(new Ball(0, TABLE_W * 0.25, TABLE_H * 0.5));
+    const layout = [1, 9, 3, 11, 8, 4, 12, 6, 14, 7, 10, 13, 2, 15, 5];
+    const startX = TABLE_W * 0.72;
+    const startY = TABLE_H * 0.5;
+    const gap = BALL_R * 2.05;
+    let k = 0;
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col <= row; col++) {
+        const x = startX + row * gap * Math.cos(Math.PI/6);
+        const y = startY + (col - row/2) * gap;
+        this.balls.push(new Ball(layout[k++], x, y));
+      }
+    }
+  }
+
+  /* Rombo de 9-ball: 1 al frente, 9 al centro. */
+  rack9Ball() {
+    this.balls = [];
+    this.balls.push(new Ball(0, TABLE_W * 0.25, TABLE_H * 0.5));
+    const layout = [1, 2, 3, 4, 9, 5, 6, 7, 8]; // filas 1-2-3-2-1
+    const rows = [1, 2, 3, 2, 1];
+    const startX = TABLE_W * 0.68;
+    const startY = TABLE_H * 0.5;
+    const gap = BALL_R * 2.05;
+    let k = 0;
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < rows[row]; col++) {
+        const x = startX + row * gap * Math.cos(Math.PI/6);
+        const y = startY + (col - (rows[row]-1)/2) * gap;
+        this.balls.push(new Ball(layout[k++], x, y));
+      }
+    }
+  }
+
+  anyMoving() {
+    return this.balls.some(b => !b.pocketed && b.moving);
+  }
+}
+
+/* ============================================================
+   ESTADO DE LA PARTIDA Y DEL TIRO
+   ============================================================ */
+const table = new Table();
+let cueBall = null;
+let baseAimAngle = 0;   // dirección calculada desde la blanca hacia el puntero
+let aimFineOffset = 0;  // corrección fina acumulada mediante flechas
+let aimAngle = 0;       // resultado normalizado: baseAimAngle + aimFineOffset
+let power = 0;
+let english = 0;      // efecto lateral ua (-1 … 1)
+let follow = 0;       // follow/draw fa (-1 … 1)
+let aiming = false;
+let lastMouse = {x: TABLE_W/2, y: TABLE_H/2};
+
+const game = {
+  mode: "8ball",
+  current: 1,
+  groups: {1: null, 2: null},
+  ballInHand: false,
+  placing: false,
+  over: false,
+  shotActive: false,
+  vsCPU: false,        // rival: false = local, true = CPU (siempre jugador 2)
+  cpuThinking: false   // placeholder: bloqueará el input cuando exista el bot
+};
+
+const shot = {
+  contacted: false,
+  firstHit: null,
+  railAfter: false,
+  pocketed: [],
+  scratch: false,
+  lowest: null           // 9-ball: bola objetivo al momento del tiro
+};
+
+function resetShot() {
+  shot.contacted = false;
+  shot.firstHit = null;
+  shot.railAfter = false;
+  shot.pocketed = [];
+  shot.scratch = false;
+  shot.lowest = null;
+}
+
+const groupOf = id => (id >= 1 && id <= 7) ? "solids" : (id >= 9 ? "stripes" : null);
+const groupName = g => g === "solids" ? "Lisas" : g === "stripes" ? "Rayadas" : "—";
+
+function remaining(player) {
+  const g = game.groups[player];
+  if (!g) return -1;
+  return table.balls.filter(b => !b.pocketed && groupOf(b.id) === g).length;
+}
+
+function lowestBall() {
+  let min = 99;
+  for (const b of table.balls) {
+    if (!b.pocketed && b.id >= 1 && b.id <= 9 && b.id < min) min = b.id;
+  }
+  return min === 99 ? null : min;
+}
+
+function other(p) { return p === 1 ? 2 : 1; }
+
+/* Etiqueta visible de cada bando: con rival CPU, el jugador 2 se
+   muestra como "CPU" en estado, mensajes de turno, faltas y resultados */
+function playerLabel(p) { return (p === 2 && game.vsCPU) ? "CPU" : `Jugador ${p}`; }
+
+/* ============================================================
+   FÍSICA EXTRAÍDA DE billiards.js
+   ============================================================ */
+
+/* Integración de una bola en un subpaso dt (ms) — método BA del motor
+   + rotación visual físicamente separada derivada de constantes:
+     rodadura s/r, follow = FOLLOW_ACCEL/BALL_R, english = 2π/200 */
+function integrate(ball, dt) {
+  if (ball.pocketed || ball.isJaw) return;
+  if (ball.speed === 0 && ball.fa === 0) {
+    if (ball.ua !== 0) {
+      if (ball.mark) {
+        const angYaw = ball.ua * dt * ENGLISH_VISUAL;
+        ball.mark = rotateVector3(ball.mark, {x:0,y:0,z:1}, angYaw);
+        ball.mark = vecNorm3(ball.mark);
+      }
+      decaySide(ball, dt);
+    }
+    return;
+  }
+
+  /* Follow/draw: mientras quede efecto vertical, la bola acelera
+     o frena a lo largo de la dirección original del tiro (Nm) */
+  if (ball.fa !== 0) {
+    let d = FOLLOW_DECEL * dt;
+    if (d > Math.abs(ball.fa)) d = Math.abs(ball.fa);
+    if (ball.fa < 0) d = -d;
+    ball.fa -= d;
+    if (Math.abs(ball.fa) < FOLLOW_STOP) ball.fa = 0;
+    const e = FOLLOW_ACCEL * d;
+    const vx = ball.vx + Math.cos(ball.Nm) * e;
+    const vy = ball.vy - Math.sin(ball.Nm) * e;
+    ball.setVel(vx, vy);
+  }
+
+  const vx0 = ball.vx;
+  const vy0 = ball.vy;
+  const speed0 = ball.speed;
+
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+
+  if (ball.mark) {
+    if (speed0 > 1e-6) {
+      const axisTrans = {x: -vy0, y: vx0, z: 0};
+      const angTrans = (speed0 * dt) / ball.r;
+      ball.mark = rotateVector3(ball.mark, axisTrans, angTrans);
+    }
+    if (Math.abs(ball.fa) > 1e-6) {
+      const axisFa = {x: Math.sin(ball.Nm), y: Math.cos(ball.Nm), z: 0};
+      const angFa = ball.fa * dt * FOLLOW_VISUAL;
+      ball.mark = rotateVector3(ball.mark, axisFa, angFa);
+    }
+    if (Math.abs(ball.ua) > 1e-6) {
+      const angYaw = ball.ua * dt * ENGLISH_VISUAL;
+      ball.mark = rotateVector3(ball.mark, {x:0,y:0,z:1}, angYaw);
+    }
+    ball.mark = vecNorm3(ball.mark);
+  }
+
+  resolveCushion(ball);
+  checkPocketCapture(ball);
+
+  /* Rozamiento de rodadura exponencial: speed *= ck^dt */
+  ball.speed *= Math.pow(ROLL_FRICTION, dt);
+  if (ball.fa === 0 && Math.abs(ball.speed) < STOP_SPEED) ball.speed = 0;
+
+  decaySide(ball, dt);
+}
+
+function decaySide(ball, dt) {
+  if (ball.ua !== 0) {
+    ball.ua *= Math.pow(SIDE_DECAY, dt);
+    if (Math.abs(ball.ua) < SIDE_STOP) ball.ua = 0;
+  }
+}
+
+/* Bandas con bocas de bolsillo: el efecto lateral desvía el rebote
+   (dir ± ua*PI/8) y banda/choque conservan parte del spin */
+function resolveCushion(ball) {
+  /* Aperturas tomadas del perfil de tronera, sin números duplicados */
+  const cornerGap = POCKET_PROFILE.corner.railGap;
+  const sideGap   = POCKET_PROFILE.side.railGap;
+  const inSideGapTop    = Math.abs(ball.x - TABLE_W/2) < sideGap;
+  const inCornerGapXLo  = ball.x < BX0 + cornerGap;
+  const inCornerGapXHi  = ball.x > BX1 - cornerGap;
+  let hit = false;
+
+  /* Boca de esquina simétrica en las cuatro bandas: railGap medido
+     desde el punto de reflexión (BX/BY), igual que en las horizontales. */
+  if (ball.x < BX0 && ball.y > BY0 + cornerGap && ball.y < BY1 - cornerGap) {
+    ball.x = BX0;
+    ball.dir = Math.PI - ball.dir + ball.ua * CUSH_SPIN_ANGLE;
+    hit = true;
+  } else if (ball.x > BX1 && ball.y > BY0 + cornerGap && ball.y < BY1 - cornerGap) {
+    ball.x = BX1;
+    ball.dir = Math.PI - ball.dir + ball.ua * CUSH_SPIN_ANGLE;
+    hit = true;
+  }
+  if (ball.y < BY0 && !inSideGapTop && !inCornerGapXLo && !inCornerGapXHi) {
+    ball.y = BY0;
+    ball.dir = -ball.dir + ball.ua * CUSH_SPIN_ANGLE;
+    hit = true;
+  } else if (ball.y > BY1 && !inSideGapTop && !inCornerGapXLo && !inCornerGapXHi) {
+    ball.y = BY1;
+    ball.dir = -ball.dir + ball.ua * CUSH_SPIN_ANGLE;
+    hit = true;
+  }
+
+  if (hit) {
+    ball.speed *= CUSHION_REST;
+    ball.ua *= CUSH_UA_KEEP;
+    ball.fa *= CUSH_FA_KEEP;
+    if (game.shotActive && shot.contacted) shot.railAfter = true;
+  }
+}
+
+/* Caída al bolsillo: profundidad fuera de los límites >= kb (método oz) */
+/* Profundidad fuera de los límites de rodadura (método oz del motor) */
+function pocketDepth(ball) {
+  let depth = 0;
+  if (ball.x < BX0) depth += BX0 - ball.x;
+  if (ball.y < BY0) depth += BY0 - ball.y;
+  if (ball.x > BX1) depth += ball.x - BX1;
+  if (ball.y > BY1) depth += ball.y - BY1;
+  return depth;
+}
+
+/* Tronera capturante más cercana, o null si ninguna está en su región */
+function nearestCapturingPocket(ball) {
+  let best = null, bestD = Infinity;
+  for (const p of table.pockets) {
+    const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+    if (d <= p.captureR && d < bestD) { best = p; bestD = d; }
+  }
+  return best;
+}
+
+/* Caída: profundidad suficiente Y dentro de la región de captura de
+   alguna tronera (captureR del perfil, no un radio genérico) */
+function checkPocketCapture(ball) {
+  if (pocketDepth(ball) >= POCKET_DEPTH && nearestCapturingPocket(ball)) {
+    ball.pocketed = true;
+    ball.speed = 0; ball.fa = 0; ball.ua = 0;
+    if (game.shotActive) {
+      if (ball.id === 0) shot.scratch = true;
+      else shot.pocketed.push(ball.id);
+    }
+  }
+}
+
+/* Colisión bola-bola: intercambio de componentes normales (método iz).
+   Las bolsas estáticas reflejan como masa infinita con restitución jh. */
+function collide(a, b) {
+  if (a.pocketed || b.pocketed) return false;
+  if (a.isJaw && b.isJaw) return false;
+  if (a.speed === 0 && b.speed === 0 && a.fa === 0 && b.fa === 0) return false;
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist2 = dx*dx + dy*dy;
+  const minDist = a.r + b.r;
+  if (dist2 > minDist * minDist || dist2 === 0) return false;
+
+  const dist = Math.sqrt(dist2);
+  const nx = dx / dist, ny = dy / dist;
+
+  // Separación posicional (las bolsas no se mueven)
+  const overlap = minDist - dist;
+  if (a.isJaw)      { b.x += nx * overlap; b.y += ny * overlap; }
+  else if (b.isJaw) { a.x -= nx * overlap; a.y -= ny * overlap; }
+  else {
+    a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
+    b.x += nx * overlap / 2; b.y += ny * overlap / 2;
+  }
+
+  // Registro de primer contacto de la blanca
+  if (game.shotActive && !shot.contacted) {
+    if (a.id === 0 && b.id > 0) { shot.contacted = true; shot.firstHit = b.id; }
+    else if (b.id === 0 && a.id > 0) { shot.contacted = true; shot.firstHit = a.id; }
+  }
+
+  let avx = a.vx, avy = a.vy, bvx = b.vx, bvy = b.vy;
+  const e = (bvx * nx + bvy * ny) - (avx * nx + avy * ny);
+
+  if (a.isJaw || b.isJaw) {
+    // Reflexión contra masa infinita
+    const ball = a.isJaw ? b : a;
+    let vx = ball.vx, vy = ball.vy;
+    const vn = vx * nx + vy * ny;
+    const approaching = a.isJaw ? vn < 0 : vn > 0;
+    if (!approaching) return false;
+    vx -= 2 * vn * nx;
+    vy -= 2 * vn * ny;
+    ball.setVel(vx, vy);
+    ball.speed *= CUSHION_REST;
+    if (game.shotActive && shot.contacted) shot.railAfter = true;
+    return true;
+  }
+
+  if (e > 0) return false; // se alejan
+
+  // Intercambio de la componente normal
+  avx += nx * e; avy += ny * e;
+  bvx -= nx * e; bvy -= ny * e;
+  a.setVel(avx, avy);
+  b.setVel(bvx, bvy);
+  a.speed *= BALL_REST;
+  b.speed *= BALL_REST;
+
+  // El choque amortigua el spin (wo / xo del motor)
+  a.fa *= HIT_FA_KEEP; a.ua *= HIT_UA_KEEP;
+  b.fa *= HIT_FA_KEEP; b.ua *= HIT_UA_KEEP;
+  return true;
+}
+
+function stepPhysics(dt) {
+  for (const b of table.balls) integrate(b, dt);
+  const all = table.balls.concat(table.jaws);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        collide(all[i], all[j]);
+      }
+    }
+  }
+}
+
+/* ============================================================
+   REGLAS: EVALUACIÓN DEL TIRO
+   ============================================================ */
+function respot(id) {
+  const b = table.balls.find(b => b.id === id);
+  if (!b || !b.pocketed) return;
+  const fx = TABLE_W * 0.72, fy = TABLE_H * 0.5;
+  const inside = (x, y) => x >= BX0 && x <= BX1 && y >= BY0 && y <= BY1;
+  const free = (x, y) => inside(x, y) && table.balls.every(o =>
+    o.pocketed || o.id === id || Math.hypot(o.x - x, o.y - y) >= BALL_R * 2.1);
+  /* Búsqueda en anillos crecientes alrededor del pie de mesa,
+     siempre dentro de los límites de rodadura */
+  for (let rad = 0; rad <= TABLE_W; rad += BALL_R * 0.6) {
+    const steps = Math.max(1, Math.round(rad / (BALL_R * 0.6)) * 4);
+    for (let s = 0; s < steps; s++) {
+      const a = (s / steps) * Math.PI * 2;
+      const x = fx + Math.cos(a) * rad;
+      const y = fy + Math.sin(a) * rad;
+      if (free(x, y)) {
+        b.pocketed = false;
+        b.x = x; b.y = y; b.speed = 0; b.fa = 0; b.ua = 0;
+        return;
+      }
+    }
+  }
+}
+
+function endGame(winner, text) {
+  game.over = true;
+  game.ballInHand = false;
+  game.placing = false;
+  showMessage(text + "\nElegí un modo o Reiniciar para jugar de nuevo", 6000);
+}
+
+/* ============================================================
+   MODO CPU — BOT SINCRONO POR LOTES (MetaBot r2)
+   billar-bot-worker-Meta.js se carga como script clásico tras
+   este archivo: sin Web Worker, funciona también desde file://.
+   El cálculo corre en tajadas cooperativas de ~25 ms y reporta
+   el porcentaje completado al visualizador de la barra superior.
+   ============================================================ */
+let lastBotDecision = null;
+
+const cpuProgEl = document.getElementById("cpu-progress");
+const cpuProgFill = document.getElementById("cpu-progress-fill");
+const cpuProgText = document.getElementById("cpu-progress-text");
+function cpuProgress(pct){
+  if(pct === null){ cpuProgEl.classList.remove("on"); return; }
+  cpuProgEl.classList.add("on");
+  cpuProgFill.style.width = pct + "%";
+  cpuProgText.textContent = `CPU ${pct}%`;
+}
+
+function getStateForBot(){
+  return {
+    mode: game.mode,
+    currentPlayer: game.current,
+    groups: {1: game.groups[1], 2: game.groups[2]},
+    ballInHand: !!(game.ballInHand || game.placing),
+    balls: table.balls.map(b=>({id:b.id, x:b.x, y:b.y, pocketed:!!b.pocketed})),
+    difficulty: 'hard',
+    /* §1: el bot recibe las constantes físicas reales del juego */
+    physics: {
+      TABLE_W, TABLE_H, BALL_R, DT, ROLL_FRICTION, CUSHION_REST, BALL_REST,
+      STOP_SPEED, MAX_SPEED, FOLLOW_DECEL, FOLLOW_ACCEL, FOLLOW_STOP,
+      SIDE_DECAY, SIDE_STOP, CUSH_SPIN_ANGLE, CUSH_FA_KEEP, CUSH_UA_KEEP,
+      HIT_FA_KEEP, HIT_UA_KEEP
+    }
+  };
+}
+
+function executeCpuShot(botShot){
+  if(game.over || table.anyMoving() || game.shotActive) return;
+  // Aplicar efectos y ángulo del bot
+  english = Math.max(-1, Math.min(1, botShot.english||0));
+  follow = Math.max(-1, Math.min(1, botShot.follow||0));
+  baseAimAngle = botShot.angle;
+  aimFineOffset = 0;
+  aimAngle = normalizeAngle(baseAimAngle + aimFineOffset);
+  // Mensaje descriptivo
+  const winTxt = botShot.isWinning ? ' ¡TIRO GANADOR!' : '';
+  const safetyTxt = botShot.isSafety ? ' (defensa)' : '';
+  showMessage(`CPU: bola ${botShot.targetId||'?'}${botShot.secondaryId?'→'+botShot.secondaryId:''} a ${botShot.pocketId||'?'}${safetyTxt}${winTxt}\nPot ${(botShot.power*100).toFixed(0)}% efecto ${botShot.english.toFixed(2)}/${botShot.follow.toFixed(2)}`, 3500);
+  // Disparar con delay para animación
+  setTimeout(()=>{
+    if(!game.over && !table.anyMoving() && !game.shotActive){
+      shoot(Math.max(0.08, Math.min(1, botShot.power)));
+    }
+  }, 700);
+}
+
+function cpuTurn(){
+  if(game.over || !game.vsCPU || game.current!==2) return;
+  if(table.anyMoving() || game.shotActive) return;
+  if(typeof MetaBot === 'undefined'){
+    // Fallback si el script del bot no cargó: tiro simple a bola legal
+    showMessage('CPU (fallback) pensando...', 1000);
+    const legal = (()=>{
+      if(game.mode==='9ball'){
+        const low=lowestBall(); return table.balls.filter(b=>!b.pocketed && b.id===low);
+      } else {
+        const g=game.groups[2];
+        if(!g) return table.balls.filter(b=>!b.pocketed && b.id!==0 && b.id!==8 && groupOf(b.id)!==null);
+        const rem=table.balls.filter(b=>!b.pocketed && groupOf(b.id)===g).length;
+        if(rem===0) return table.balls.filter(b=>!b.pocketed && b.id===8);
+        return table.balls.filter(b=>!b.pocketed && groupOf(b.id)===g);
+      }
+    })();
+    if(legal.length>0){
+      const t=legal[0];
+      baseAimAngle=Math.atan2(t.y-cueBall.y, t.x-cueBall.x)+(Math.random()-0.5)*0.2;
+      aimAngle=baseAimAngle;
+      english=0; follow=0;
+      setTimeout(()=>shoot(0.6), 600);
+    }
+    return;
+  }
+  game.cpuThinking = true;
+  cpuProgress(0);
+  showMessage('CPU analizando mesa...', 1500);
+  MetaBot.analyze(getStateForBot(),
+    pct => cpuProgress(pct),
+    result => {
+      game.cpuThinking = false;
+      cpuProgress(null);
+      if(!result || result.error || !result.shot){
+        showMessage('CPU no encontró tiro', 1500);
+        return;
+      }
+      const shot = result.shot;
+      lastBotDecision = shot;
+      console.log('[CPU] decision', shot, 'top', result.top);
+      // Si bola en mano, colocar primero (el bot recalculó todo para esa posición)
+      if(shot.cuePlacement && game.placing){
+        cueBall.x = shot.cuePlacement.x;
+        cueBall.y = shot.cuePlacement.y;
+        cueBall.pocketed = false;
+        cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+        game.placing = false;
+        game.ballInHand = false;
+        showMessage(`CPU coloca blanca y tira a bola ${shot.targetId||'?'} → tronera ${shot.pocketId||'?'}`, 2500);
+        setTimeout(()=>{ executeCpuShot(shot); }, 500);
+      } else {
+        executeCpuShot(shot);
+      }
+    });
+}
+function evaluateShot() {
+  resetShotSafety();
+  const pottedBalls = shot.pocketed.slice();
+  let foul = null;
+
+  if (game.mode === "9ball") {
+    const lowest = shot.lowest;   // capturado en shoot(), antes de embocar
+    if (shot.scratch) foul = "blanca embocada";
+    else if (!shot.contacted) foul = "la blanca no tocó ninguna bola";
+    else if (lowest !== null && shot.firstHit !== lowest)
+      foul = `debía tocar primero la bola ${lowest}`;
+    else if (pottedBalls.length === 0 && !shot.railAfter)
+      foul = "ninguna bola llegó a la banda";
+
+    if (pottedBalls.includes(9)) {
+      if (foul) {
+        respot(9);
+        showMessage(`Falta (${foul}). La 9 vuelve al pie de mesa.\nBola en mano para ${playerLabel(other(game.current))}`);
+      } else {
+        endGame(game.current, `🏆 ¡${playerLabel(game.current)} gana la partida!\nEmbocó la 9 legalmente.`);
+        resetShot();
+        return;
+      }
+    }
+
+    if (foul) {
+      if (!pottedBalls.includes(9))
+        showMessage(`Falta: ${foul}.\nBola en mano para ${playerLabel(other(game.current))}`);
+      game.current = other(game.current);
+      giveBallInHand();
+    } else if (pottedBalls.length === 0) {
+      game.current = other(game.current);
+      showMessage(`Turno de ${playerLabel(game.current)}`, 1200);
+    }
+  } else {
+    /* ---------- 8-BALL ---------- */
+    const me = game.current;
+    const myGroup = game.groups[me];
+    const remBefore = myGroup
+      ? table.balls.filter(b => groupOf(b.id) === myGroup && (!b.pocketed || pottedBalls.includes(b.id))).length
+      : -1;
+
+    if (shot.scratch) foul = "blanca embocada";
+    else if (!shot.contacted) foul = "la blanca no tocó ninguna bola";
+    else if (shot.firstHit === 8) {
+      if (myGroup === null) foul = "mesa abierta: no podés pegarle primero a la 8";
+      else if (remBefore > 0) foul = "tocaste la 8 antes de limpiar tu grupo";
+    } else if (myGroup && groupOf(shot.firstHit) !== myGroup) {
+      foul = `le pegaste primero al grupo rival (${groupName(groupOf(shot.firstHit))})`;
+    }
+    if (!foul && pottedBalls.length === 0 && !shot.railAfter)
+      foul = "ninguna bola llegó a la banda";
+
+    const ownPotted = myGroup ? pottedBalls.filter(id => groupOf(id) === myGroup) : [];
+    const eightPotted = pottedBalls.includes(8);
+
+    if (eightPotted) {
+      const cleanedBefore = myGroup && remBefore === 0;
+      if (!foul && cleanedBefore) {
+        endGame(me, `🏆 ¡${playerLabel(me)} gana la partida!\nEmbocó la 8 limpiamente.`);
+      } else {
+        endGame(other(me), `🏆 ¡${playerLabel(other(me))} gana la partida!\n${playerLabel(me)} embocó la 8 antes de tiempo` +
+          (foul ? ` y cometió falta (${foul}).` : "."));
+      }
+      resetShot();
+      return;
+    }
+
+    let assignedThisShot = false;
+    if (!foul && game.groups[1] === null) {
+      const firstGroupBall = pottedBalls.find(id => groupOf(id) !== null);
+      if (firstGroupBall !== undefined) {
+        game.groups[me] = groupOf(firstGroupBall);
+        game.groups[other(me)] = groupOf(firstGroupBall) === "solids" ? "stripes" : "solids";
+        assignedThisShot = true;
+        showMessage(`Grupos definidos:\n${playerLabel(me)} → ${groupName(game.groups[me])} · ` +
+          `${playerLabel(other(me))} → ${groupName(game.groups[other(me)])}`);
+      }
+    }
+
+    /* Asignar grupo con emboche legal también conserva el turno */
+    const keepTurn = !foul && (ownPotted.length > 0 || assignedThisShot ||
+      (game.groups[1] === null && pottedBalls.some(id => groupOf(id) !== null)));
+
+    if (foul) {
+      showMessage(`Falta: ${foul}.\nBola en mano para ${playerLabel(other(me))}`);
+      game.current = other(me);
+      giveBallInHand();
+    } else if (!keepTurn) {
+      game.current = other(me);
+      showMessage(`Turno de ${playerLabel(game.current)}`, 1200);
+    }
+  }
+  resetShot();
+  /* Gancho del bot (placeholder): si el turno quedó del lado de la CPU
+     y la partida sigue, el bot actuaría aquí. Hoy cpuTurn() es un no-op.
+     Los returns tempranos de arriba pasan por endGame() → game.over=true,
+     así que este único punto los cubre. Segundo punto de disparo futuro:
+     al completar la bola en mano (rama game.placing de onPointerDown). */
+  if (game.vsCPU && game.current === 2 && !game.over && !game.placing) cpuTurn();
+}
+
+function resetShotSafety() {
+  if (shot.scratch && cueBall) {
+    cueBall.pocketed = false;
+    cueBall.x = -100; cueBall.y = -100;
+    cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+  }
+}
+
+function giveBallInHand() {
+  game.ballInHand = true;
+  game.placing = true;
+  if (cueBall && cueBall.x > 0 && cueBall.pocketed) {
+    cueBall.pocketed = false;
+    cueBall.x = -100; cueBall.y = -100;
+  }
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let scale = 1;
+let tableTx = 0, tableTy = 0; // offset en pixels del origen de la mesa (0,0)
+
+function resize() {
+  const container = document.getElementById("canvas-container");
+  const cw = container.clientWidth;
+  const ch = container.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+
+  // Canvas ocupa 100% del contenedor
+  canvas.width = Math.max(1, Math.floor(cw * dpr));
+  canvas.height = Math.max(1, Math.floor(ch * dpr));
+  canvas.style.width = cw + "px";
+  canvas.style.height = ch + "px";
+
+  // ESCALADO MAXIMIZADO: basado solo en la mesa + pequeño padding,
+  // no en VIEW_W (que incluye el taco). Así el taco no limita el tamaño.
+  const fitW = cw / (TABLE_W + TABLE_PAD * 2);
+  const fitH = ch / (TABLE_H + TABLE_PAD * 2);
+  const fit = Math.min(fitW, fitH);
+  scale = fit * dpr;
+
+  // Centrar la mesa en el canvas
+  tableTx = (canvas.width - TABLE_W * scale) * 0.5;
+  tableTy = (canvas.height - TABLE_H * scale) * 0.5;
+
+  ctx.setTransform(scale, 0, 0, scale, tableTx, tableTy);
+}
+
+/* Sala alrededor de la mesa (piso oscuro + sombra de la mesa).
+   El piso se pinta en coordenadas de dispositivo sobre TODO el canvas:
+   con el escalado maximizado, el margen lógico puede no cubrir la pantalla. */
+function drawRoom() {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = "#05070a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fillRect(-12, 14, TABLE_W + 26, TABLE_H + 24);
+}
+
+/* --- Dibujo de troneras y bandas (guía: orden base → ensanchamiento →
+   paño central → tramos de banda → mandíbulas → agujeros → brillos) --- */
+
+function drawPocketRim(p) {
+  /* Ensanchamiento verde de la madera alrededor del agujero */
+  const g = ctx.createRadialGradient(p.x - 4, p.y - 4, 3, p.x, p.y,
+    p.type === "corner" ? p.rimR : p.rimX);
+  g.addColorStop(0, "#0a854a");
+  g.addColorStop(1, "#065c31");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  if (p.type === "corner") {
+    ctx.arc(p.x, p.y, p.rimR, 0, Math.PI * 2);
+  } else {
+    ctx.ellipse(p.x, p.y, p.rimX, p.rimY, 0, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
+function drawCushions() {
+  const cg = POCKET_PROFILE.corner.railGap;
+  const sg = POCKET_PROFILE.side.railGap;
+  const cx = TABLE_W / 2;
+  const x0 = BX0 + cg, x1 = BX1 - cg;
+  const y0 = BY0 + cg, y1 = BY1 - cg;
+  /*
+     La profundidad de la banda y el avance de la cara son iguales.
+     Por tanto, cada pared de entrada tiene pendiente exacta de 45 grados.
+  */
+  const jawDepth = CUSHION;
+
+  /*
+     Cada tramo es un trapecio simple. Las bolas estáticas de colisión siguen
+     existiendo, pero no se dibujan como discos ni semicírculos.
+  */
+  const fillAndStroke = path => {
+    const g = ctx.createLinearGradient(0, 0, 0, TABLE_H);
+    g.addColorStop(0, "#0b8b4d");
+    g.addColorStop(0.5, "#08723f");
+    g.addColorStop(1, "#065c33");
+    ctx.fillStyle = g;
+    ctx.fill(path);
+    ctx.strokeStyle = "rgba(0,0,0,0.42)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke(path);
+  };
+
+  const horizontalSegment = (xa, xb, top) => {
+    const outerY = top ? 0 : TABLE_H;
+    const innerY = top ? CUSHION : TABLE_H - CUSHION;
+    const path = new Path2D();
+    path.moveTo(xa - jawDepth, outerY);
+    path.lineTo(xb + jawDepth, outerY);
+    path.lineTo(xb, innerY);
+    path.lineTo(xa, innerY);
+    path.closePath();
+    fillAndStroke(path);
+  };
+
+  const verticalSegment = (ya, yb, left) => {
+    const outerX = left ? 0 : TABLE_W;
+    const innerX = left ? CUSHION : TABLE_W - CUSHION;
+    const path = new Path2D();
+    path.moveTo(outerX, ya - jawDepth);
+    path.lineTo(outerX, yb + jawDepth);
+    path.lineTo(innerX, yb);
+    path.lineTo(innerX, ya);
+    path.closePath();
+    fillAndStroke(path);
+  };
+
+  horizontalSegment(x0, cx - sg, true);
+  horizontalSegment(cx + sg, x1, true);
+  horizontalSegment(x0, cx - sg, false);
+  horizontalSegment(cx + sg, x1, false);
+  verticalSegment(y0, y1, true);
+  verticalSegment(y0, y1, false);
+
+  /* Brillo continuo por el borde exterior, sin círculos en las bocas. */
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(x0 - jawDepth, 1.5); ctx.lineTo(cx - sg + jawDepth, 1.5);
+  ctx.moveTo(cx + sg - jawDepth, 1.5); ctx.lineTo(x1 + jawDepth, 1.5);
+  ctx.moveTo(x0 - jawDepth, TABLE_H - 1.5); ctx.lineTo(cx - sg + jawDepth, TABLE_H - 1.5);
+  ctx.moveTo(cx + sg - jawDepth, TABLE_H - 1.5); ctx.lineTo(x1 + jawDepth, TABLE_H - 1.5);
+  ctx.moveTo(1.5, y0 - jawDepth); ctx.lineTo(1.5, y1 + jawDepth);
+  ctx.moveTo(TABLE_W - 1.5, y0 - jawDepth); ctx.lineTo(TABLE_W - 1.5, y1 + jawDepth);
+  ctx.stroke();
+}
+
+function drawPocketHole(p) {
+  /* Agujero negro con gradiente: la parte interna cae a negro puro */
+  const g = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, p.holeR);
+  g.addColorStop(0, "#000000");
+  g.addColorStop(0.75, "#050505");
+  g.addColorStop(1, "#1a1a1a");
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.holeR, 0, Math.PI * 2);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawTable() {
+  /* 1. Base de madera */
+  ctx.fillStyle = "#3f2708";
+  ctx.fillRect(0, 0, TABLE_W, TABLE_H);
+
+  /* 2. Ensanchamientos verdes de las troneras */
+  for (const p of table.pockets) drawPocketRim(p);
+
+  /* 3. Paño central */
+  const grad = ctx.createLinearGradient(0, 0, TABLE_W, TABLE_H);
+  grad.addColorStop(0, "#0b7a42");
+  grad.addColorStop(0.5, "#0a6b3c");
+  grad.addColorStop(1, "#085c34");
+  ctx.fillStyle = grad;
+  ctx.fillRect(CUSHION, CUSHION, TABLE_W - 2*CUSHION, TABLE_H - 2*CUSHION);
+
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(CUSHION + 3, CUSHION + 3, TABLE_W - 2*CUSHION - 6, TABLE_H - 2*CUSHION - 6);
+
+  /* 4. Tramos de banda (rectos, divididos y acortados) */
+  drawCushions();
+
+  /* 5. Agujeros; las mandíbulas están integradas en los paths de banda. */
+  for (const p of table.pockets) drawPocketHole(p);
+
+  /* 6. Brillos, diamantes y marcas del paño */
+  ctx.fillStyle = "#d4a017";
+  const diamond = (x, y) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y - 5); ctx.lineTo(x + 4, y); ctx.lineTo(x, y + 5); ctx.lineTo(x - 4, y);
+    ctx.closePath(); ctx.fill();
+  };
+  for (let i = 1; i < 8; i++) {
+    diamond(CUSHION/2, CUSHION + i * (TABLE_H - 2*CUSHION)/8);
+    diamond(TABLE_W - CUSHION/2, CUSHION + i * (TABLE_H - 2*CUSHION)/8);
+  }
+  for (let i = 1; i < 4; i++) {
+    const x = CUSHION + i * (TABLE_W - 2*CUSHION)/4;
+    if (Math.abs(x - TABLE_W/2) > 40) {   // la tronera central no lleva diamante
+      diamond(x, CUSHION/2);
+      diamond(x, TABLE_H - CUSHION/2);
+    }
+  }
+
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(TABLE_W * 0.25, CUSHION);
+  ctx.lineTo(TABLE_W * 0.25, TABLE_H - CUSHION);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(TABLE_W * 0.72, TABLE_H * 0.5, 3, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  ctx.fill();
+}
+
+/* --- Superposición de depuración (solo con DEBUG_POCKETS = true) --- */
+function drawDebugPockets() {
+  ctx.save();
+  ctx.font = "9px monospace";
+  ctx.textAlign = "center";
+  for (const p of table.pockets) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.holeR, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,80,80,0.8)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.captureR, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,220,80,0.7)";
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.fillText(p.id, p.x, p.y - p.captureR - 4);
+    for (const j of p.jaws) {
+      ctx.beginPath();
+      ctx.arc(j.x, j.y, BALL_R, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(80,200,255,0.8)";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(j.x - 3, j.y); ctx.lineTo(j.x + 3, j.y);
+      ctx.moveTo(j.x, j.y - 3); ctx.lineTo(j.x, j.y + 3);
+      ctx.stroke();
+    }
+  }
+  /* marcas de los extremos de banda */
+  ctx.fillStyle = "rgba(255,80,255,0.9)";
+  const cg = POCKET_PROFILE.corner.railGap, sg = POCKET_PROFILE.side.railGap;
+  for (const [mx, my] of [
+    [BX0 + cg, BY0], [BX1 - cg, BY0], [BX0 + cg, BY1], [BX1 - cg, BY1],
+    [TABLE_W/2 - sg, BY0], [TABLE_W/2 + sg, BY0], [TABLE_W/2 - sg, BY1], [TABLE_W/2 + sg, BY1],
+    [BX0, BY0 + cg], [BX0, BY1 - cg], [BX1, BY0 + cg], [BX1, BY1 - cg]
+  ]) { ctx.fillRect(mx - 2, my - 2, 4, 4); }
+  ctx.restore();
+}
+
+function drawBall(ball) {
+  if (ball.pocketed) return;
+  const {x, y, r, id} = ball;
+
+  ctx.beginPath();
+  ctx.arc(x + 2, y + 3, r, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fill();
+
+  const g = ctx.createRadialGradient(x - r*0.3, y - r*0.3, r*0.1, x, y, r);
+  if (id === 0) {
+    g.addColorStop(0, "#ffffff");
+    g.addColorStop(1, "#e0e0e0");
+  } else if (id === 8) {
+    g.addColorStop(0, "#333");
+    g.addColorStop(1, "#000");
+  } else {
+    const col = BALL_COLORS[id] || "#888";
+    g.addColorStop(0, lighten(col, 40));
+    g.addColorStop(1, col);
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI*2);
+  ctx.fillStyle = g;
+  ctx.fill();
+
+  if (id >= 9) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.clip();
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(x - r, y - r*0.35, r*2, r*0.7);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI*2);
+    ctx.strokeStyle = BALL_COLORS[id];
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (id > 0) {
+    ctx.fillStyle = (id === 8 || id < 9) ? "#fff" : "#111";
+    ctx.font = `bold ${r * 0.95}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(id), x, y + 0.5);
+  }
+
+  /* Marca de tiza con orientación 3D físicamente separada:
+     - rodadura: eje perpendicular a desplazamiento, ángulo = s/r
+     - follow/draw: eje perpendicular a Nm, ángulo proporcional a fa (FOLLOW_ACCEL/BALL_R)
+     - english: eje vertical, ángulo proporcional a ua (2π/200)
+     Se proyecta sobre vista cenital y se oculta si está en hemisferio inferior */
+  if (id === 0 && ball.mark) {
+    const drawMark = (mx, my, mz, radius, alphaBase) => {
+      if (mz <= 0.02) return;
+      const alpha = alphaBase * (0.35 + 0.65 * mz);
+      const px = x + mx * r * 0.58;
+      const py = y + my * r * 0.58;
+      const scale = 0.7 + 0.3 * mz;
+      ctx.beginPath();
+      ctx.arc(px, py, radius * scale, 0, Math.PI*2);
+      ctx.fillStyle = `rgba(70,130,200,${alpha})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(20,40,80,${alpha*0.5})`;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    };
+    drawMark(ball.mark.x, ball.mark.y, ball.mark.z, r*0.22, 0.9);
+    drawMark(-ball.mark.x, -ball.mark.y, -ball.mark.z, r*0.13, 0.55);
+  }
+
+  ctx.beginPath();
+  ctx.arc(x - r*0.35, y - r*0.35, r*0.25, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fill();
+}
+
+function lighten(hex, pct) {
+  const num = parseInt(hex.slice(1), 16);
+  let r = (num >> 16) + pct;
+  let g = ((num >> 8) & 0x00FF) + pct;
+  let b = (num & 0x0000FF) + pct;
+  r = Math.min(255, r); g = Math.min(255, g); b = Math.min(255, b);
+  return `rgb(${r},${g},${b})`;
+}
+
+function placementValid(x, y) {
+  if (x < BX0 || x > BX1 || y < BY0 || y > BY1) return false;
+  for (const b of table.balls) {
+    if (b.id === 0 || b.pocketed) continue;
+    if (Math.hypot(b.x - x, b.y - y) < BALL_R * 2.1) return false;
+  }
+  for (const p of table.pockets) {
+    if (Math.hypot(p.x - x, p.y - y) < p.holeR + BALL_R * 0.5) return false;
+  }
+  return true;
+}
+
+function drawPlacementGhost() {
+  if (!game.placing) return;
+  const x = lastMouse.x, y = lastMouse.y;
+  const ok = placementValid(x, y);
+  ctx.beginPath();
+  ctx.arc(x, y, BALL_R, 0, Math.PI*2);
+  ctx.fillStyle = ok ? "rgba(255,255,255,0.55)" : "rgba(248,81,73,0.45)";
+  ctx.fill();
+  ctx.strokeStyle = ok ? "#3fb950" : "#f85149";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawPowerArrow(cueBall, aimAngle, power) {
+  if (!cueBall || cueBall.pocketed || cueBall.x < 0) return;
+  if (table.anyMoving() || game.placing || game.over) return;
+  if (power <= 0.001) return; // no mostrar si potencia casi cero (como original: 0<la)
+  const cos = Math.cos(aimAngle), sin = Math.sin(aimAngle);
+  // Origen justo fuera de la blanca sobre la línea de tiro
+  const startDist = BALL_R + 2;
+  // Longitud interpolada como en original: Tq*(1-la)+Cn*la
+  const len = POWER_SHOW_MIN * (1 - power) + POWER_SHOW_MAX * power;
+  const x0 = cueBall.x + cos * startDist;
+  const y0 = cueBall.y + sin * startDist;
+  const x1 = x0 + cos * len;
+  const y1 = y0 + sin * len;
+
+  // Corrimiento al rojo: startcolor_powerarrow (blanco/verde) -> endcolor_powerarrow (rojo)
+  // Original usa Fw y $t con gradiente. Replicamos lerp blanco->rojo + verde->rojo
+  const start = {r: 230, g: 255, b: 230}; // casi blanco-verdoso
+  const end = {r: 248, g: 81, b: 73};     // rojo GameTwist aprox #f85149
+  const r = Math.round(start.r + (end.r - start.r) * power);
+  const g = Math.round(start.g + (end.g - start.g) * power);
+  const b = Math.round(start.b + (end.b - start.b) * power);
+  const color = `rgb(${r},${g},${b})`;
+  const colorMid = `rgb(${Math.round((r+255)/2)},${Math.round((g+255)/2)},${Math.round((b+255)/2)})`;
+
+  // Sombra
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.strokeStyle = "rgba(0,0,0,0.8)";
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x0+1.5, y0+1.5);
+  ctx.lineTo(x1+1.5, y1+1.5);
+  ctx.stroke();
+  ctx.restore();
+
+  // Cuerpo con gradiente como original: Fw -> $t a lo largo de Cn
+  const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+  grad.addColorStop(0, colorMid);
+  grad.addColorStop(1, color);
+  ctx.strokeStyle = grad;
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+
+  // Punta de flecha
+  const headLen = 10 + power * 6;
+  const headAngle = Math.PI / 7;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - Math.cos(aimAngle - headAngle) * headLen, y1 - Math.sin(aimAngle - headAngle) * headLen);
+  ctx.lineTo(x1 - Math.cos(aimAngle + headAngle) * headLen, y1 - Math.sin(aimAngle + headAngle) * headLen);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawCue(cueBall, aimAngle, power, english, follow) {
+  if (!cueBall || cueBall.pocketed || cueBall.x < 0) return;
+  if (table.anyMoving() || game.placing || game.over) return;
+
+  const cos = Math.cos(aimAngle), sin = Math.sin(aimAngle);
+  const nx = -sin, ny = cos;                    // normal a la línea de tiro
+  const gap = BALL_R + 4 + power * CUE_PULL;    // retroceso del taco con la potencia
+  const tipX  = cueBall.x - cos * gap;
+  const tipY  = cueBall.y - sin * gap;
+  const buttX = tipX - cos * CUE_LEN;           // culata: taco completo, en proporción real
+  const buttY = tipY - sin * CUE_LEN;
+  const wTip = 2.2, wButt = 5.5;                // perfil cónico (sola ≈ 13 mm, culata ≈ 30 mm)
+
+  // Sombra del taco sobre la mesa y la sala
+  ctx.beginPath();
+  ctx.moveTo(buttX + 4 + nx * wButt, buttY + 5 + ny * wButt);
+  ctx.lineTo(buttX + 4 - nx * wButt, buttY + 5 - ny * wButt);
+  ctx.lineTo(tipX + 4 - nx * wTip,  tipY + 5 - ny * wTip);
+  ctx.lineTo(tipX + 4 + nx * wTip,  tipY + 5 + ny * wTip);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.fill();
+
+  // Cuerpo cónico con gradiente longitudinal (madera → punta clara)
+  const cueGrad = ctx.createLinearGradient(buttX, buttY, tipX, tipY);
+  cueGrad.addColorStop(0, "#3d2410");
+  cueGrad.addColorStop(0.5, "#8b5a2b");
+  cueGrad.addColorStop(0.78, "#e8d5b5");
+  cueGrad.addColorStop(1, "#f5e6c8");
+  ctx.beginPath();
+  ctx.moveTo(buttX + nx * wButt, buttY + ny * wButt);
+  ctx.lineTo(buttX - nx * wButt, buttY - ny * wButt);
+  ctx.lineTo(tipX - nx * wTip,  tipY - ny * wTip);
+  ctx.lineTo(tipX + nx * wTip,  tipY + ny * wTip);
+  ctx.closePath();
+  ctx.fillStyle = cueGrad;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+
+  // Virola y sola
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 2.4, 0, Math.PI*2);
+  ctx.fillStyle = "#1c2733";
+  ctx.fill();
+
+  // Línea de mira
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath();
+  ctx.moveTo(cueBall.x, cueBall.y);
+  ctx.lineTo(cueBall.x + cos * 500, cueBall.y + sin * 500);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* Indicador de punto de contacto: x = efecto lateral, y = follow/draw */
+  if (Math.abs(english) > 0.03 || Math.abs(follow) > 0.03) {
+    ctx.beginPath();
+    ctx.arc(cueBall.x + english * 8, cueBall.y - follow * 8, 3.5, 0, Math.PI*2);
+    ctx.fillStyle = "#4fc3f7";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function render() {
+  // Limpiar todo el canvas en coordenadas de pixel, sin depender de MARGIN
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+  // El transform actual (scale + tableTx/Ty) sigue activo desde resize()
+  drawRoom();
+  drawTable();
+  for (const b of table.balls) drawBall(b);
+  drawPlacementGhost();
+  drawPowerArrow(cueBall, aimAngle, power);
+  drawCue(cueBall, aimAngle, power, english, follow);
+  if (DEBUG_POCKETS) drawDebugPockets();
+}
+
+/* ============================================================
+   INPUT & GAME LOOP
+   ============================================================ */
+const powerBar = document.getElementById("power-bar");
+const powerFill = document.getElementById("power-fill");
+const infoEl = document.getElementById("info");
+const msgEl = document.getElementById("message");
+let msgTimer = null;
+
+function showMessage(txt, ms = 2600) {
+  msgEl.textContent = txt;
+  msgEl.classList.add("show");
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => msgEl.classList.remove("show"), ms);
+}
+
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0;
+  const clientY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0;
+  // Convertir a coordenadas de canvas en pixels reales y luego a lógicas usando tableTx/Ty
+  const px = (clientX - rect.left) * dpr;
+  const py = (clientY - rect.top) * dpr;
+  return {
+    x: (px - tableTx) / scale,
+    y: (py - tableTy) / scale
+  };
+}
+
+/* ============================================================
+   INPUT - MODELO GAMETWIST CALIBRADO
+   - Dirección: desde centro blanca hacia puntero (GameTwist ns())
+   - Potencia: (d - minlength_powerarrow_click)/(maxlength-minlength)
+     con clamp .01→0 como en original
+   - Disparo: duración ≥250ms + potencia > MIN_POWER
+   - Hover: solo dirección
+   ============================================================ */
+const MIN_POWER_TO_SHOOT = 0.05;
+const MIN_PRESS_DURATION = 250;
+let pressStartTime = 0;
+
+/* Normaliza al intervalo −π…π para evitar crecimiento indefinido */
+function normalizeAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a <= -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+/* Reconstruye el ángulo final: base (puntero) + corrección fina (flechas) */
+function rebuildAimAngle() {
+  aimAngle = normalizeAngle(baseAimAngle + aimFineOffset);
+}
+
+function updateAimOnly(pos) {
+  if (!cueBall) return;
+  // GameTwist: dirección = blanca -> puntero (solo la base; el offset persiste)
+  baseAimAngle = Math.atan2(pos.y - cueBall.y, pos.x - cueBall.x);
+  rebuildAimAngle();
+}
+
+function updateAimAndPower(pos) {
+  if (!cueBall) return;
+  baseAimAngle = Math.atan2(pos.y - cueBall.y, pos.x - cueBall.x);
+  rebuildAimAngle();
+  const d = Math.hypot(pos.x - cueBall.x, pos.y - cueBall.y);
+  // Calibración idéntica a billiards.js ns():
+  // c = (d - Sq)/(xv - Sq), .01>c =>0, 1<c=>1
+  let raw = (d - AIM_DEAD) / AIM_RANGE;
+  if (raw < 0.01) raw = 0;
+  if (raw > 1) raw = 1;
+  if (raw < 0) raw = 0;
+  power = raw;
+  powerFill.style.width = (power * 100) + "%";
+}
+
+function onPointerDown(e) {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const pos = getMousePos(e);
+  lastMouse = pos;
+  if (game.cpuThinking) { e.preventDefault(); return; }
+  if (game.over) { showMessage("Partida terminada. Elegí 8-Ball / 9-Ball o Reiniciar."); e.preventDefault(); return; }
+
+  if (game.placing) {
+    if (placementValid(pos.x, pos.y)) {
+      cueBall.x = pos.x; cueBall.y = pos.y;
+      cueBall.pocketed = false;
+      cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+      game.placing = false;
+      game.ballInHand = false;
+      aimFineOffset = 0;   // el ajuste fino no sobrevive a la bola en mano
+      rebuildAimAngle();
+      showMessage(`Blanca colocada. Turno de ${playerLabel(game.current)}`, 1200);
+      // Si el que colocó fue CPU (bola en mano por falta rival) y sigue siendo turno CPU, que siga pensando
+      if(game.vsCPU && game.current===2 && !game.over){
+        setTimeout(()=>{ if(!game.placing) cpuTurn(); }, 300);
+      }
+    } else {
+      showMessage("Posición inválida: elegí un lugar libre dentro de las bandas", 1500);
+    }
+    e.preventDefault();
+    return;
+  }
+
+  // No iniciar tiro si hay movimiento, shot activo, colocando o partida terminada
+  if (table.anyMoving() || game.shotActive || game.placing || game.over) return;
+  if (!cueBall || cueBall.pocketed) return;
+
+  pressStartTime = performance.now();
+  aiming = true;
+  updateAimAndPower(pos);
+  powerBar.style.display = "block";
+  e.preventDefault();
+}
+
+function onPointerMove(e) {
+  const pos = getMousePos(e);
+  lastMouse = pos;
+  if (!cueBall) return;
+  if (game.placing || game.over) return;
+  if (table.anyMoving() || game.shotActive) return;
+
+  if (aiming) {
+    updateAimAndPower(pos);
+  } else {
+    updateAimOnly(pos);
+  }
+  e.preventDefault();
+}
+
+function shoot(p) {
+  resetShot();
+  game.shotActive = true;
+  shot.lowest = lowestBall();
+  cueBall.dir = -aimAngle;
+  cueBall.Nm = -aimAngle;
+  cueBall.speed = p * MAX_SPEED;
+  cueBall.fa = p * follow;
+  cueBall.ua = p * english;
+  /* El ajuste fino se consume con el tiro: vuelve a cero para el siguiente */
+  aimFineOffset = 0;
+  rebuildAimAngle();
+}
+
+function onPointerUp(e) {
+  if (!aiming) return;
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+  const pos = getMousePos(e);
+  lastMouse = pos;
+  if (cueBall) updateAimAndPower(pos);
+
+  const elapsed = performance.now() - pressStartTime;
+  const shouldShoot = elapsed >= MIN_PRESS_DURATION
+    && power > MIN_POWER_TO_SHOOT
+    && !table.anyMoving()
+    && !game.shotActive
+    && !game.placing
+    && !game.over;
+
+  aiming = false;
+  powerBar.style.display = "none";
+
+  if (shouldShoot && cueBall) {
+    shoot(power);
+  }
+  power = 0;
+  powerFill.style.width = "0%";
+  pressStartTime = 0;
+  e.preventDefault();
+}
+
+function onPointerCancel(e) {
+  aiming = false;
+  power = 0;
+  powerFill.style.width = "0%";
+  pressStartTime = 0;
+  powerBar.style.display = "none";
+  e.preventDefault();
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  if (spinLocked()) return;      // rueda bloqueada durante el tiro en curso
+  const delta = -Math.sign(e.deltaY) * 0.15;
+  if (e.shiftKey) follow = Math.max(-1, Math.min(1, follow + delta));
+  else english = Math.max(-1, Math.min(1, english + delta));
+}
+
+/* Pointer Events unificados con captura: el arrastre sigue activo
+   aunque el puntero salga del canvas, y salir ya no dispara */
+canvas.addEventListener("pointerdown", e => {
+  canvas.setPointerCapture(e.pointerId);
+  onPointerDown(e);
+});
+canvas.addEventListener("pointermove", onPointerMove);
+canvas.addEventListener("pointerup", onPointerUp);
+canvas.addEventListener("pointercancel", onPointerCancel);
+canvas.addEventListener("wheel", onWheel, {passive:false});
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    /* Dispara solo con el tiro anterior completamente evaluado:
+       bolas quietas, sin tiro activo, blanca presente y no embocada,
+       sin colocación en curso y partida en juego. Si no, Espacio no toca nada. */
+    const spaceReady = !table.anyMoving() && !game.shotActive && !game.cpuThinking &&
+      cueBall && !cueBall.pocketed && !game.placing && !game.over;
+    if (spaceReady) {
+      power = 1;
+      powerFill.style.width = "100%";
+      powerBar.style.display = "block";
+      shoot(1);
+      setTimeout(() => powerBar.style.display = "none", 300);
+    }
+    e.preventDefault();
+  }
+  /* Teclas de efecto: también bloqueadas mientras el tiro se ejecuta */
+  if (!spinLocked()) {
+    if (e.key === "+" || e.key === "=") english = Math.min(1, english + 0.1);
+    if (e.key === "-") english = Math.max(-1, english - 0.1);
+    if (e.key === "]") follow = Math.min(1, follow + 0.1);
+    if (e.key === "[") follow = Math.max(-1, follow - 0.1);
+  }
+  /* Ajuste fino persistente: las flechas solo modifican aimFineOffset
+     y reconstruyen aimAngle de inmediato, sin tocar la potencia */
+  if (!table.anyMoving() && !game.placing && !game.over) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      aimFineOffset += (e.key === "ArrowRight" ? 0.008 : -0.008);
+      aimFineOffset = normalizeAngle(aimFineOffset);
+      rebuildAimAngle();
+      e.preventDefault();
+    }
+  }
+});
+
+/* ---------- Selector de punto de impacto (bola blanca) ----------
+   Clic o arrastre dentro del círculo:
+     horizontal → efecto lateral (english) · vertical → follow/draw
+     centro (zona muerta) → tiro sin efecto · doble clic → centrar   */
+const spinUI = document.getElementById("spin-ui");
+const spinCtx = spinUI.getContext("2d");
+const SPIN_UI_C = 66;       // centro del widget (canvas 132×132)
+const SPIN_UI_R = 52;       // radio útil de la bola
+const SPIN_DEAD = 0.12;     // zona muerta central (fracción del radio)
+let spinDrag = false;
+
+/* Mapea un punto del widget a efectos, con clamp al borde del círculo.
+   Tras la zona muerta se remapea linealmente de 0…1: el efecto crece de
+   forma continua desde el borde de la zona muerta hasta el borde de la bola. */
+function spinFromPoint(dx, dy) {
+  let nx = dx / SPIN_UI_R;
+  let ny = dy / SPIN_UI_R;
+  const len = Math.hypot(nx, ny);
+  if (len > 1) { nx /= len; ny /= len; }
+  const m = Math.hypot(nx, ny);
+  if (m < SPIN_DEAD) return { english: 0, follow: 0 };
+  const scaled = (m - SPIN_DEAD) / (1 - SPIN_DEAD) / m;
+  nx *= scaled;
+  ny *= scaled;
+  return { english: nx, follow: -ny };   // arriba = follow, abajo = draw
+}
+
+/* El efecto seleccionado se bloquea mientras el tiro anterior se ejecuta:
+   la bola ya lleva copiado su spin y el cambio correspondería al tiro
+   siguiente, produciendo desfasaje visual entre interfaz y física */
+function spinLocked() {
+  return table.anyMoving() || game.shotActive || game.cpuThinking;
+}
+
+function applySpinFromEvent(e) {
+  if (spinLocked()) return;
+  const rect = spinUI.getBoundingClientRect();
+  const dx = (e.clientX - rect.left) * (spinUI.width / rect.width) - SPIN_UI_C;
+  const dy = (e.clientY - rect.top) * (spinUI.height / rect.height) - SPIN_UI_C;
+  const s = spinFromPoint(dx, dy);
+  english = s.english;
+  follow = s.follow;
+}
+
+spinUI.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (spinLocked()) return;      // bloqueado durante el tiro en curso
+  spinUI.setPointerCapture(e.pointerId);
+  spinDrag = true;
+  applySpinFromEvent(e);
+});
+spinUI.addEventListener("pointermove", e => {
+  if (spinDrag) applySpinFromEvent(e);
+  e.preventDefault();
+});
+spinUI.addEventListener("pointerup", e => { spinDrag = false; });
+spinUI.addEventListener("pointercancel", e => { spinDrag = false; });
+spinUI.addEventListener("dblclick", e => {
+  if (spinLocked()) { e.preventDefault(); return; }
+  english = 0; follow = 0; e.preventDefault();
+});
+
+function drawSpinUI() {
+  const c = SPIN_UI_C, R = SPIN_UI_R;
+  spinCtx.clearRect(0, 0, spinUI.width, spinUI.height);
+  spinCtx.save();
+  if (spinLocked()) spinCtx.globalAlpha = 0.4;   // atenuado mientras el tiro se ejecuta
+  /* aro exterior */
+  spinCtx.beginPath();
+  spinCtx.arc(c, c, R + 7, 0, Math.PI*2);
+  spinCtx.fillStyle = "#0d1117";
+  spinCtx.fill();
+  /* bola blanca */
+  const g = spinCtx.createRadialGradient(c - 16, c - 16, 5, c, c, R);
+  g.addColorStop(0, "#ffffff");
+  g.addColorStop(1, "#c7d0da");
+  spinCtx.beginPath();
+  spinCtx.arc(c, c, R, 0, Math.PI*2);
+  spinCtx.fillStyle = g;
+  spinCtx.fill();
+  /* cruz guía y zona muerta */
+  spinCtx.strokeStyle = "rgba(0,0,0,0.18)";
+  spinCtx.lineWidth = 1;
+  spinCtx.beginPath();
+  spinCtx.moveTo(c - R, c); spinCtx.lineTo(c + R, c);
+  spinCtx.moveTo(c, c - R); spinCtx.lineTo(c, c + R);
+  spinCtx.stroke();
+  spinCtx.beginPath();
+  spinCtx.arc(c, c, R * SPIN_DEAD, 0, Math.PI*2);
+  spinCtx.strokeStyle = "rgba(0,0,0,0.3)";
+  spinCtx.stroke();
+  /* punto de contacto */
+  const px = c + english * R;
+  const py = c - follow * R;
+  spinCtx.beginPath();
+  spinCtx.arc(px, py, 6, 0, Math.PI*2);
+  spinCtx.fillStyle = "#d32f2f";
+  spinCtx.fill();
+  spinCtx.strokeStyle = "rgba(255,255,255,0.7)";
+  spinCtx.lineWidth = 1.2;
+  spinCtx.stroke();
+  spinCtx.restore();
+}
+
+/* ---------- Estado en pantalla ---------- */
+function statusText() {
+  const modeName = game.mode === "8ball" ? "8-Ball" : "9-Ball";
+  if (game.over) return `<b>${modeName}</b> · Partida terminada`;
+  let t = `<b>${modeName}</b> · Turno: <b>${playerLabel(game.current)}</b>`;
+  if (game.mode === "8ball") {
+    if (game.groups[1]) {
+      const g = game.groups[game.current];
+      const rem = remaining(game.current);
+      t += ` (${groupName(g)}${rem >= 0 ? ", faltan " + rem : ""})`;
+    } else {
+      t += " · Mesa abierta";
+    }
+  } else {
+    const low = lowestBall();
+    if (low !== null) t += ` · Objetivo: bola <b>${low}</b>`;
+  }
+  if (game.placing) t += " · <b>BOLA EN MANO</b>: hacé clic para colocar la blanca";
+  else if (Math.abs(english) > 0.03 || Math.abs(follow) > 0.03)
+    t += ` · efecto ${english >= 0 ? "+" : ""}${english.toFixed(1)} / follow ${follow >= 0 ? "+" : ""}${follow.toFixed(1)}`;
+  return t;
+}
+
+/* ---------- Botones ---------- */
+function setActiveButtons() {
+  document.getElementById("btn-8ball").classList.toggle("active", game.mode === "8ball");
+  document.getElementById("btn-9ball").classList.toggle("active", game.mode === "9ball");
+  document.getElementById("btn-local").classList.toggle("active", !game.vsCPU);
+  document.getElementById("btn-cpu").classList.toggle("active", game.vsCPU);
+}
+
+/* Selector de rival: cambia la bandera y reinicia conservando la
+   variante (8-ball/9-ball), igual que los botones de modo */
+function setRival(cpu) {
+  if (game.vsCPU === cpu) return;
+  game.vsCPU = cpu;
+  startGame(game.mode);
+}
+
+function startGame(mode) {
+  game.mode = mode;
+  game.current = 1;
+  game.groups = {1: null, 2: null};
+  game.ballInHand = false;
+  game.placing = false;
+  game.over = false;
+  game.shotActive = false;
+  resetShot();
+  english = 0;
+  follow = 0;
+  baseAimAngle = 0;
+  aimFineOffset = 0;
+  aimAngle = 0;
+  if (mode === "8ball") table.rack8Ball();
+  else table.rack9Ball();
+  cueBall = table.cue();
+  setActiveButtons();
+  showMessage(mode === "8ball"
+    ? "Modo 8-Ball\nJugador 1 rompe. Grupos: lisas (1-7) y rayadas (9-15)."
+    : "Modo 9-Ball\nJugador 1 rompe. Tocá siempre primero la bola más baja; gana quien emboca la 9.", 3500);
+}
+
+document.getElementById("btn-reset").onclick = () => startGame(game.mode);
+document.getElementById("btn-8ball").onclick = () => startGame("8ball");
+document.getElementById("btn-9ball").onclick = () => startGame("9ball");
+document.getElementById("btn-local").onclick = () => setRival(false);
+document.getElementById("btn-cpu").onclick = () => setRival(true);
+
+/* ---------- Loop con acumulador de tiempo real ----------
+   Consume el tiempo transcurrido en subpasos fijos de DT ms:
+   la simulación avanza a velocidad real a 60 Hz, 144 Hz o más. */
+let physAcc = 0;
+let lastFrameT = performance.now();
+
+function loop(now) {
+  const elapsed = Math.min(100, now - lastFrameT); // tope anti-espiral
+  lastFrameT = now;
+  if (table.anyMoving()) {
+    physAcc += elapsed;
+    let steps = 0;
+    while (physAcc >= DT && steps < 30) {
+      stepPhysics(DT);
+      physAcc -= DT;
+      steps++;
+    }
+    if (steps === 30) physAcc = 0;
+    infoEl.innerHTML = "Bolas en movimiento…";
+  } else {
+    physAcc = 0;
+    if (game.shotActive) {
+      game.shotActive = false;
+      evaluateShot();
+    }
+    infoEl.innerHTML = statusText();
+  }
+  render();
+  drawSpinUI();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Init ---------- */
+window.addEventListener("resize", resize);
+resize();
+startGame("8ball");
+requestAnimationFrame(loop);
+</script>
+<!-- Bot CPU síncrono por lotes (script clásico: funciona desde file://) -->
+<script src="./bot_billar.js"></script>
+</body>
+</html>
