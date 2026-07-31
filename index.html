@@ -1060,6 +1060,11 @@ function getStateForBot(){
 }
 
 function executeCpuShot(botShot){
+  /* Protección 2: evitar disparar sin colocación */
+  if(game.placing){
+    showMessage('CPU: esperando colocación de blanca', 1500);
+    return;
+  }
   if(game.over || table.anyMoving() || game.shotActive) return;
   const nMias = game.mode === '8ball' ? Math.max(0, remaining(2)) : table.balls.filter(b => !b.pocketed && b.id >= 1 && b.id <= 9).length;
   const nTuyas = game.mode === '8ball' ? Math.max(0, remaining(1)) : nMias;
@@ -1090,9 +1095,56 @@ function executeCpuShot(botShot){
 function cpuTurn(){
   if(game.over || !game.vsCPU || game.current!==2) return;
   if(table.anyMoving() || game.shotActive) return;
-  if(typeof MetaBot === 'undefined'){
-    // Fallback si el script del bot no cargó: tiro simple a bola legal
+
+  /* ---------- Fallback cuando MetaBot no está disponible ---------- */
+  function fallbackShot(){
     showMessage('CPU (fallback) pensando...', 1000);
+    /* Si hay bola en mano, colocar la blanca en una posición válida */
+    if(game.placing && cueBall){
+      const bx0 = CUSHION + BALL_R, bx1 = TABLE_W - CUSHION - BALL_R;
+      const by0 = CUSHION + BALL_R, by1 = TABLE_H - CUSHION - BALL_R;
+      let placed = false;
+      for(let ix=0; ix<5 && !placed; ix++){
+        for(let iy=0; iy<3 && !placed; iy++){
+          const x = bx0 + (bx1-bx0)*(ix+0.5)/5;
+          const y = by0 + (by1-by0)*(iy+0.5)/3;
+          if(placementValid(x, y)){
+            cueBall.x = x; cueBall.y = y; cueBall.pocketed = false;
+            cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+            game.placing = false; game.ballInHand = false;
+            placed = true;
+          }
+        }
+      }
+      if(!placed){
+        const fx = TABLE_W*0.25, fy = TABLE_H*0.5;
+        if(placementValid(fx, fy)){
+          cueBall.x = fx; cueBall.y = fy;
+          placed = true;
+        } else {
+          for(let r=0; r<=200 && !placed; r+=10){
+            const steps = Math.max(4, Math.round(r/5)*4);
+            for(let s=0; s<steps; s++){
+              const a = (s/steps)*Math.PI*2;
+              const x = fx + Math.cos(a)*r;
+              const y = fy + Math.sin(a)*r;
+              if(placementValid(x, y)){
+                cueBall.x = x; cueBall.y = y;
+                placed = true; break;
+              }
+            }
+          }
+        }
+        if(!placed){
+          showMessage('CPU no pudo encontrar una posición válida para la blanca', 2000);
+          return;
+        }
+        cueBall.pocketed = false;
+        cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+        game.placing = false;
+        game.ballInHand = false;
+      }
+    }
     const legal = (()=>{
       if(game.mode==='9ball'){
         const low=lowestBall(); return table.balls.filter(b=>!b.pocketed && b.id===low);
@@ -1111,8 +1163,13 @@ function cpuTurn(){
       english=0; follow=0;
       setTimeout(()=>shoot(0.6), 600);
     }
+  }
+
+  if(typeof MetaBot === 'undefined'){
+    fallbackShot();
     return;
   }
+
   game.cpuThinking = true;
   cpuProgress(0);
   showMessage('CPU analizando mesa...', 0);
@@ -1121,23 +1178,55 @@ function cpuTurn(){
     result => {
       game.cpuThinking = false;
       cpuProgress(null);
+
+      /* ---------- Protección 3: recuperarse si no hay tiro ---------- */
       if(!result || result.error || !result.shot){
-        showMessage('CPU no encontró tiro', 1500);
+        showMessage('CPU no encontró tiro — usando fallback', 2000);
+        fallbackShot();
         return;
       }
+
       const shot = result.shot;
       lastBotDecision = shot;
       console.log('[CPU] decision', shot, 'top', result.top);
-      // Si bola en mano, colocar primero (el bot recalculó todo para esa posición)
+
+      /* ---------- Protección 1: validar cuePlacement ---------- */
       if(shot.cuePlacement && game.placing){
-        cueBall.x = shot.cuePlacement.x;
-        cueBall.y = shot.cuePlacement.y;
-        cueBall.pocketed = false;
-        cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
-        game.placing = false;
-        game.ballInHand = false;
-        showMessage(`CPU coloca blanca y tira a bola ${shot.targetId||'?'} → tronera ${shot.pocketId||'?'}`, 2500);
-        setTimeout(()=>{ executeCpuShot(shot); }, 500);
+        const px = shot.cuePlacement.x, py = shot.cuePlacement.y;
+        if(placementValid(px, py)){
+          cueBall.x = px; cueBall.y = py;
+          cueBall.pocketed = false;
+          cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+          game.placing = false;
+          game.ballInHand = false;
+          showMessage(`CPU coloca blanca y tira a bola ${shot.targetId||'?'} → tronera ${shot.pocketId||'?'}`, 2500);
+          setTimeout(()=>{ executeCpuShot(shot); }, 500);
+        } else {
+          /* Colocación inválida: buscar posición válida cercana */
+          let placed = false;
+          for(let r=0; r<=80 && !placed; r+=8){
+            const steps = Math.max(4, Math.round(r/4)*4);
+            for(let s=0; s<steps; s++){
+              const a = (s/steps)*Math.PI*2;
+              const x = px + Math.cos(a)*r;
+              const y = py + Math.sin(a)*r;
+              if(placementValid(x, y)){
+                cueBall.x = x; cueBall.y = y; cueBall.pocketed = false;
+                cueBall.speed = 0; cueBall.fa = 0; cueBall.ua = 0;
+                game.placing = false; game.ballInHand = false;
+                placed = true; break;
+              }
+            }
+          }
+          if(placed){
+            showMessage(`CPU coloca blanca (ajustada) y tira`, 2500);
+            setTimeout(()=>{ executeCpuShot(shot); }, 500);
+          } else {
+            /* Ni siquiera cerca funciona: fallback completo */
+            showMessage('CPU: colocación inválida — usando fallback', 2000);
+            fallbackShot();
+          }
+        }
       } else {
         executeCpuShot(shot);
       }
@@ -1806,6 +1895,13 @@ function render() {
 /* ============================================================
    INPUT & GAME LOOP
    ============================================================ */
+
+/* Regla global: mientras sea turno de la CPU, todo control humano
+   sobre la blanca, el taco, la potencia, el ángulo y el efecto
+   queda deshabilitado. */
+function humanInputBlocked() {
+  return game.vsCPU && game.current === 2;
+}
 const powerBar = document.getElementById("power-bar");
 const powerFill = document.getElementById("power-fill");
 const infoEl = document.getElementById("info");
@@ -1886,6 +1982,7 @@ function updateAimAndPower(pos) {
 }
 
 function onPointerDown(e) {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   if (e.pointerType === "mouse" && e.button !== 0) return;
   const pos = getMousePos(e);
   lastMouse = pos;
@@ -1893,6 +1990,12 @@ function onPointerDown(e) {
   if (game.over) { showMessage("Partida terminada. Elegí 8-Ball / 9-Ball o Reiniciar."); e.preventDefault(); return; }
 
   if (game.placing) {
+    /* Protección 5: impedir que el humano coloque por la CPU */
+    if (game.vsCPU && game.current === 2) {
+      showMessage("Turno de la CPU: esperá a que coloque la blanca", 1500);
+      e.preventDefault();
+      return;
+    }
     if (placementValid(pos.x, pos.y)) {
       cueBall.x = pos.x; cueBall.y = pos.y;
       cueBall.pocketed = false;
@@ -1925,6 +2028,7 @@ function onPointerDown(e) {
 }
 
 function onPointerMove(e) {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   const pos = getMousePos(e);
   lastMouse = pos;
   if (!cueBall) return;
@@ -1957,6 +2061,7 @@ function shoot(p) {
 }
 
 function onPointerUp(e) {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   if (!aiming) return;
   if (e.pointerType === "mouse" && e.button !== 0) return;
   const pos = getMousePos(e);
@@ -1984,6 +2089,7 @@ function onPointerUp(e) {
 }
 
 function onPointerCancel(e) {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   aiming = false;
   power = 0;
   powerFill.style.width = "0%";
@@ -1993,6 +2099,7 @@ function onPointerCancel(e) {
 }
 
 function onWheel(e) {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   e.preventDefault();
   if (spinLocked()) return;      // rueda bloqueada durante el tiro en curso
   const delta = -Math.sign(e.deltaY) * 0.15;
@@ -2012,6 +2119,7 @@ canvas.addEventListener("pointercancel", onPointerCancel);
 canvas.addEventListener("wheel", onWheel, {passive:false});
 
 document.addEventListener("keydown", e => {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   if (e.code === "Space") {
     /* Dispara solo con el tiro anterior completamente evaluado:
        bolas quietas, sin tiro activo, blanca presente y no embocada,
@@ -2081,6 +2189,7 @@ function spinLocked() {
 }
 
 function applySpinFromEvent(e) {
+  if (humanInputBlocked()) return;
   if (spinLocked()) return;
   const rect = spinUI.getBoundingClientRect();
   const dx = (e.clientX - rect.left) * (spinUI.width / rect.width) - SPIN_UI_C;
@@ -2091,6 +2200,7 @@ function applySpinFromEvent(e) {
 }
 
 spinUI.addEventListener("pointerdown", e => {
+  if (humanInputBlocked()) { e.preventDefault(); e.stopPropagation(); return; }
   e.preventDefault();
   e.stopPropagation();
   if (spinLocked()) return;      // bloqueado durante el tiro en curso
@@ -2105,6 +2215,7 @@ spinUI.addEventListener("pointermove", e => {
 spinUI.addEventListener("pointerup", e => { spinDrag = false; });
 spinUI.addEventListener("pointercancel", e => { spinDrag = false; });
 spinUI.addEventListener("dblclick", e => {
+  if (humanInputBlocked()) { e.preventDefault(); return; }
   if (spinLocked()) { e.preventDefault(); return; }
   english = 0; follow = 0; e.preventDefault();
 });
