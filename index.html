@@ -46,6 +46,21 @@
     font-weight: 600;
     letter-spacing: 0.5px;
   }
+  .controls-left {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .controls-right {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-left: auto;
+    justify-content: flex-end;
+    flex: 1;
+  }
   .controls {
     display: flex;
     gap: 10px;
@@ -85,8 +100,9 @@
   #info {
     font-size: 0.8rem;
     color: #8b949e;
-    min-width: 220px;
     text-align: right;
+    flex: 1;
+    min-width: 160px;
   }
   #info b { color: #e6edf3; }
   #canvas-container {
@@ -177,14 +193,15 @@
 <body>
 <div id="wrap">
   <header>
-    <h1>🎱 Billar Local</h1>
-    <div class="controls">
+    <div class="controls-left">
       <button id="btn-8ball" class="secondary">8-Ball</button>
       <button id="btn-9ball" class="secondary">9-Ball</button>
       <span class="ctrl-sep">Rival:</span>
       <button id="btn-local" class="secondary">Local</button>
       <button id="btn-cpu" class="secondary">CPU</button>
       <button id="btn-reset">Reiniciar</button>
+    </div>
+    <div class="controls-right">
       <div id="cpu-progress"><div class="track"><div id="cpu-progress-fill"></div></div><span id="cpu-progress-text">CPU 0%</span></div>
       <span id="elo-hud" style="color:#8b949e;font-size:12px;margin-left:10px;white-space:pre;"></span>
       <div id="info">Listo</div>
@@ -826,14 +843,53 @@ function cpuProgress(pct){
 const eloHudEl = document.getElementById("elo-hud");
 let lastShotInfo = null;
 
-function eloHud(){
+function eloHud(ejecucion = null) {
   if (!eloHudEl) return;
+
   const d = Nivel.diagnostico();
+
+  const nMias = game.mode === "8ball"
+    ? Math.max(0, remaining(2))
+    : table.balls.filter(
+        b => !b.pocketed && b.id >= 1 && b.id <= 9
+      ).length;
+
+  const nTuyas = game.mode === "8ball"
+    ? Math.max(0, remaining(1))
+    : nMias;
+
+  const ayudaMarcador = Nivel.deltaMarcador(nMias, nTuyas);
+
+  const sBotReal =
+    ejecucion && isFinite(ejecucion.S_BOT)
+      ? ejecucion.S_BOT
+      : Nivel.sBot({ nMias, nTuyas });
+
   const dObj = lastBotDecision && isFinite(lastBotDecision.D)
-    ? Math.round(lastBotDecision.D) : null;
-  let txt = `S_jugador ≈ ${d.S_jugador} · S_bot ≈ ${d.S_filtrado} · n=${d.n}`;
-  if (dObj != null) txt += `\nCPU apunta: D ${dObj}`;
-  if (lastShotInfo) txt += `\nÚltimo: ${lastShotInfo}`;
+    ? Math.round(lastBotDecision.D)
+    : null;
+
+  let txt =
+    `Jugador ${d.S_jugador}` +
+    ` · CPU ${Math.round(sBotReal)}` +
+    ` · muestras ${d.n}`;
+
+  if (game.mode === "8ball") {
+    txt +=
+      `\nBase humana ${d.S_filtrado}` +
+      ` · corrección ${d.descuento >= 0 ? "+" : ""}${d.descuento}` +
+      `\nMarcador CPU ${ayudaMarcador >= 0 ? "+" : ""}${Math.round(ayudaMarcador)}` +
+      ` · balance CPU ${d.delta0 >= 0 ? "+" : ""}${d.delta0}`;
+  }
+
+  if (dObj !== null) {
+    txt += `\nÚltimo tiro CPU: D ${dObj}`;
+  }
+
+  if (lastShotInfo) {
+    txt += `\nÚltimo humano: ${lastShotInfo}`;
+  }
+
   eloHudEl.textContent = txt;
 }
 /* v5.5/6: inferir la intención real en un fallo a partir de la
@@ -915,6 +971,7 @@ function ratePlayerShot(player){
         lastShotInfo = isFinite(m.D_meas) && m.sigA != null
           ? `D ${Math.round(m.D_meas)} · tolerancia ±${(m.sigA * 1000).toFixed(1)} mrad`
           : `D ${Math.round(m.D_meas || 0)} (aprox)`;
+        eloHud();
       });
     } else {
       Nivel.registrarTiro({
@@ -951,6 +1008,7 @@ function ratePlayerShot(player){
         });
         if (MetaBot.rateShot)
           lastShotInfo = `fallo · intento D ${Math.round(MetaBot.rateShot(pre, shot.firstHit, intent.pocketId))} → ${intent.pocketId}`;
+        eloHud();
       });
     } else {
       let bestD = null;
@@ -1020,7 +1078,7 @@ function executeCpuShot(botShot){
   const eloTxt = (botShot.D != null && isFinite(botShot.D))
     ? `\nElo objetivo D ${Math.round(botShot.D)}` +
       (botShot.successRate != null ? ` (éxito ${(botShot.successRate*100).toFixed(0)}%)` : '') : '';
-  eloHud();
+  eloHud(ej);
   showMessage(`CPU: bola ${botShot.targetId||'?'}${botShot.secondaryId?'→'+botShot.secondaryId:''} a ${botShot.pocketId||'?'}${safetyTxt}${winTxt}${eloTxt}\nPot ${(ej.power*100).toFixed(0)}% efecto ${botShot.english.toFixed(2)}/${botShot.follow.toFixed(2)}`, 0);
   setTimeout(()=>{
     if(!game.over && !table.anyMoving() && !game.shotActive){
@@ -1185,7 +1243,7 @@ function evaluateShot() {
      Los returns tempranos de arriba pasan por endGame() → game.over=true,
      así que este único punto los cubre. Segundo punto de disparo futuro:
      al completar la bola en mano (rama game.placing de onPointerDown). */
-  if (game.vsCPU && game.current === 2 && !game.over && !game.placing) cpuTurn();
+  if (game.vsCPU && game.current === 2 && !game.over) cpuTurn();
 }
 
 function resetShotSafety() {
@@ -2145,7 +2203,6 @@ function startGame(mode) {
   Nivel.reset();
   lastBotDecision = null;
   lastShotInfo = null;
-  eloHud();
   english = 0;
   follow = 0;
   baseAimAngle = 0;
@@ -2154,6 +2211,7 @@ function startGame(mode) {
   if (mode === "8ball") table.rack8Ball();
   else table.rack9Ball();
   cueBall = table.cue();
+  eloHud();
   setActiveButtons();
   showMessage(mode === "8ball"
     ? "Modo 8-Ball\nJugador 1 rompe. Grupos: lisas (1-7) y rayadas (9-15)."
@@ -2201,6 +2259,8 @@ function loop(now) {
 /* ---------- Init ---------- */
 window.addEventListener("resize", resize);
 resize();
+startGame("8ball");
+requestAnimationFrame(loop);
 </script>
 <script>
 /* ============================================================
