@@ -145,20 +145,21 @@
     transition: width 0.05s linear;
   }
   #message {
+    /* Banda superior sobre la mesa: no tapa el área de juego */
     position: absolute;
-    top: 50%;
+    top: 6px;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     background: rgba(22,27,34,0.92);
-    padding: 18px 28px;
-    border-radius: 10px;
+    padding: 8px 18px;
+    border-radius: 8px;
     border: 1px solid #30363d;
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     text-align: center;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.3s;
-    max-width: 80%;
+    max-width: 92%;
     white-space: pre-line;
   }
   #message.show { opacity: 1; }
@@ -184,6 +185,7 @@
       <button id="btn-cpu" class="secondary">CPU</button>
       <button id="btn-reset">Reiniciar</button>
       <div id="cpu-progress"><div class="track"><div id="cpu-progress-fill"></div></div><span id="cpu-progress-text">CPU 0%</span></div>
+      <span id="elo-hud" style="color:#8b949e;font-size:12px;margin-left:10px;white-space:pre;"></span>
       <div id="info">Listo</div>
     </div>
   </header>
@@ -490,8 +492,12 @@ const shot = {
   firstHit: null,
   railAfter: false,
   pocketed: [],
+  pocketedIn: {},        // id de bola → id de tronera donde cayó
   scratch: false,
-  lowest: null           // 9-ball: bola objetivo al momento del tiro
+  lowest: null,          // 9-ball: bola objetivo al momento del tiro
+  player: null,          // jugador que ejecutó el tiro
+  preState: null,        // estado de mesa PRE-tiro (para rateShot)
+  params: null           // ángulo/potencia/efectos ejecutados (measureShot)
 };
 
 function resetShot() {
@@ -499,8 +505,12 @@ function resetShot() {
   shot.firstHit = null;
   shot.railAfter = false;
   shot.pocketed = [];
+  shot.pocketedIn = {};
   shot.scratch = false;
   shot.lowest = null;
+  shot.player = null;
+  shot.preState = null;
+  shot.params = null;
 }
 
 const groupOf = id => (id >= 1 && id <= 7) ? "solids" : (id >= 9 ? "stripes" : null);
@@ -667,12 +677,14 @@ function nearestCapturingPocket(ball) {
 /* Caída: profundidad suficiente Y dentro de la región de captura de
    alguna tronera (captureR del perfil, no un radio genérico) */
 function checkPocketCapture(ball) {
-  if (pocketDepth(ball) >= POCKET_DEPTH && nearestCapturingPocket(ball)) {
+  if (pocketDepth(ball) >= POCKET_DEPTH) {
+    const pk = nearestCapturingPocket(ball);
+    if (!pk) return;
     ball.pocketed = true;
     ball.speed = 0; ball.fa = 0; ball.ua = 0;
     if (game.shotActive) {
       if (ball.id === 0) shot.scratch = true;
-      else shot.pocketed.push(ball.id);
+      else { shot.pocketed.push(ball.id); shot.pocketedIn[ball.id] = pk.id; }
     }
   }
 }
@@ -807,6 +819,163 @@ function cpuProgress(pct){
   cpuProgText.textContent = `CPU ${pct}%`;
 }
 
+/* ============================================================
+   HUD ELO — ahora delegado al módulo de equiparación (nivel.js)
+   ============================================================ */
+const eloHudEl = document.getElementById("elo-hud");
+let lastShotInfo = null;
+
+function eloHud(){
+  if (!eloHudEl) return;
+  const d = Nivel.diagnostico();
+  const dObj = lastBotDecision && isFinite(lastBotDecision.D)
+    ? Math.round(lastBotDecision.D) : null;
+  let txt = `S_jugador ≈ ${d.S_jugador} · S_bot ≈ ${d.S_filtrado} · n=${d.n}`;
+  if (dObj != null) txt += `\nCPU apunta: D ${dObj}`;
+  if (lastShotInfo) txt += `\nÚltimo: ${lastShotInfo}`;
+  eloHudEl.textContent = txt;
+}
+/* v5.5/6: inferir la intención real en un fallo a partir de la
+   geometría de contacto: por dónde pasaba la blanca respecto a la
+   primera bola tocada → dirección implícita de la bola objeto →
+   tronera más alineada (≤ ~29°). Reemplaza el proxy de "tronera más
+   fácil" (EM-lite: la intención se estima del contacto, no del catálogo). */
+function inferIntent(pre, params, firstHitId){
+  const cue = pre.balls.find(b => b.id === 0);
+  const t = pre.balls.find(b => b.id === firstHitId);
+  if (!cue || !t || !params) return null;
+  const dx = Math.cos(params.angle), dy = Math.sin(params.angle);
+  const rx = t.x - cue.x, ry = t.y - cue.y;
+  const proj = rx * dx + ry * dy;
+  if (proj <= 0) return null;
+  const closest2 = rx * rx + ry * ry - proj * proj;
+  const R2 = (2 * BALL_R) * (2 * BALL_R);
+  if (closest2 >= R2) return null;              // el rayo no rozaba la bola
+  const s = proj - Math.sqrt(R2 - closest2);
+  const cxp = cue.x + dx * s, cyp = cue.y + dy * s;   // punto de contacto
+  let ox = t.x - cxp, oy = t.y - cyp;
+  const L = Math.hypot(ox, oy);
+  if (L < 1e-6) return null;
+  ox /= L; oy /= L;
+  let best = null, bestAng = 0.5;
+  for (const p of table.pockets) {
+    const px = p.x - t.x, py = p.y - t.y;
+    const pl = Math.hypot(px, py);
+    if (pl < 1) continue;
+    const ang = Math.acos(Math.max(-1, Math.min(1, (ox * px + oy * py) / pl)));
+    if (ang < bestAng) { bestAng = ang; best = p; }
+  }
+  return best ? { pocketId: best.id, angDev: bestAng } : null;
+}
+function ratePlayerShot(player){
+  if (!shot.preState || player == null) return;
+  const pre = shot.preState, prm = shot.params;
+  if (player === 2 && game.vsCPU) {
+    /* Lazo cerrado: medir al bot igual que al humano */
+    if (!lastBotDecision) return;
+    const potId = lastBotDecision.targetId;
+    const emboco = potId != null && shot.pocketed.includes(potId);
+    Nivel.registrarTiroBot({
+      alphaEjec: prm.angle,
+      alphaOpt: lastBotDecision.angle,
+      distCT: lastBotDecision.distCT || null,
+      pEjec: prm.power,
+      pOpt: lastBotDecision.power,
+      alphaTol: lastBotDecision.sigA || null,
+      aimFineOffset: 0,
+      objetivo: lastBotDecision.targetId,
+      tronera: lastBotDecision.pocketId,
+      emboco: emboco,
+      quien: 'bot'
+    });
+    return;
+  }
+  const potted = shot.pocketed.slice();
+  for (let i = 0; i < potted.length; i++) {
+    const pk = shot.pocketedIn[potted[i]];
+    if (!pk) continue;
+    if (i === 0 && typeof MetaBot !== 'undefined' && MetaBot.measureShot && prm) {
+      const id0 = potted[i];
+      MetaBot.measureShot(pre, prm, id0, pk, m => {
+        if (!m || m.alphaOpt == null) return;   // medición fallida: no alimentar
+        Nivel.registrarTiro({
+          alphaEjec: prm.angle,
+          alphaOpt: m.alphaOpt,
+          distCT: m.distCT != null ? m.distCT : null,
+          pEjec: prm.power,
+          pOpt: m.pOpt != null ? m.pOpt : null,
+          alphaTol: m.sigA != null ? m.sigA : null,
+          aimFineOffset: 0,
+          objetivo: id0,
+          tronera: pk,
+          emboco: true,
+          quien: 'humano'
+        });
+        lastShotInfo = isFinite(m.D_meas) && m.sigA != null
+          ? `D ${Math.round(m.D_meas)} · tolerancia ±${(m.sigA * 1000).toFixed(1)} mrad`
+          : `D ${Math.round(m.D_meas || 0)} (aprox)`;
+      });
+    } else {
+      Nivel.registrarTiro({
+        alphaEjec: prm.angle,
+        alphaOpt: null,
+        distCT: null,
+        pEjec: prm.power,
+        pOpt: null,
+        alphaTol: null,
+        aimFineOffset: 0,
+        objetivo: potted[i],
+        tronera: pk,
+        emboco: true,
+        quien: 'humano'
+      });
+    }
+  }
+  if (potted.length === 0 && shot.contacted && shot.firstHit != null && !shot.scratch) {
+    const intent = inferIntent(pre, prm, shot.firstHit);
+    if (intent) {
+      MetaBot.measureShot(pre, prm, shot.firstHit, intent.pocketId, m => {
+        Nivel.registrarTiro({
+          alphaEjec: prm.angle,
+          alphaOpt: m && m.alphaOpt != null ? m.alphaOpt : null,
+          distCT: m && m.distCT != null ? m.distCT : null,
+          pEjec: prm.power,
+          pOpt: m && m.pOpt != null ? m.pOpt : null,
+          alphaTol: m && m.sigA != null ? m.sigA : null,
+          aimFineOffset: 0,
+          objetivo: shot.firstHit,
+          tronera: intent.pocketId,
+          emboco: false,
+          quien: 'humano'
+        });
+        if (MetaBot.rateShot)
+          lastShotInfo = `fallo · intento D ${Math.round(MetaBot.rateShot(pre, shot.firstHit, intent.pocketId))} → ${intent.pocketId}`;
+      });
+    } else {
+      let bestD = null;
+      for (const p of table.pockets) {
+        const D = MetaBot.rateShot(pre, shot.firstHit, p.id);
+        if (D != null && isFinite(D) && (bestD == null || D < bestD)) bestD = D;
+      }
+      if (bestD != null) {
+        Nivel.registrarTiro({
+          alphaEjec: prm.angle,
+          alphaOpt: null,
+          distCT: null,
+          pEjec: prm.power,
+          pOpt: null,
+          alphaTol: null,
+          aimFineOffset: 0,
+          objetivo: shot.firstHit,
+          tronera: null,
+          emboco: false,
+          quien: 'humano'
+        });
+      }
+    }
+  }
+}
+
 function getStateForBot(){
   return {
     mode: game.mode,
@@ -815,6 +984,12 @@ function getStateForBot(){
     ballInHand: !!(game.ballInHand || game.placing),
     balls: table.balls.map(b=>({id:b.id, x:b.x, y:b.y, pocketed:!!b.pocketed})),
     difficulty: 'hard',
+    /* v4: nivel del bot desde el módulo de equiparación */
+    playerSkill: (() => {
+      const nMias = game.mode === '8ball' ? Math.max(0, remaining(2)) : table.balls.filter(b => !b.pocketed && b.id >= 1 && b.id <= 9).length;
+      const nTuyas = game.mode === '8ball' ? Math.max(0, remaining(1)) : nMias;
+      return Nivel.sBot({nMias, nTuyas});
+    })(),
     /* §1: el bot recibe las constantes físicas reales del juego */
     physics: {
       TABLE_W, TABLE_H, BALL_R, DT, ROLL_FRICTION, CUSHION_REST, BALL_REST,
@@ -827,20 +1002,28 @@ function getStateForBot(){
 
 function executeCpuShot(botShot){
   if(game.over || table.anyMoving() || game.shotActive) return;
-  // Aplicar efectos y ángulo del bot
+  const nMias = game.mode === '8ball' ? Math.max(0, remaining(2)) : table.balls.filter(b => !b.pocketed && b.id >= 1 && b.id <= 9).length;
+  const nTuyas = game.mode === '8ball' ? Math.max(0, remaining(1)) : nMias;
+  const ej = Nivel.perturbar(botShot, {
+    balls: table.balls.map(b => ({id: b.id, x: b.x, y: b.y})),
+    turno: 0,
+    nMias, nTuyas
+  });
   english = Math.max(-1, Math.min(1, botShot.english||0));
   follow = Math.max(-1, Math.min(1, botShot.follow||0));
-  baseAimAngle = botShot.angle;
+  baseAimAngle = ej.angle;
   aimFineOffset = 0;
   aimAngle = normalizeAngle(baseAimAngle + aimFineOffset);
-  // Mensaje descriptivo
   const winTxt = botShot.isWinning ? ' ¡TIRO GANADOR!' : '';
   const safetyTxt = botShot.isSafety ? ' (defensa)' : '';
-  showMessage(`CPU: bola ${botShot.targetId||'?'}${botShot.secondaryId?'→'+botShot.secondaryId:''} a ${botShot.pocketId||'?'}${safetyTxt}${winTxt}\nPot ${(botShot.power*100).toFixed(0)}% efecto ${botShot.english.toFixed(2)}/${botShot.follow.toFixed(2)}`, 3500);
-  // Disparar con delay para animación
+  const eloTxt = (botShot.D != null && isFinite(botShot.D))
+    ? `\nElo objetivo D ${Math.round(botShot.D)}` +
+      (botShot.successRate != null ? ` (éxito ${(botShot.successRate*100).toFixed(0)}%)` : '') : '';
+  eloHud();
+  showMessage(`CPU: bola ${botShot.targetId||'?'}${botShot.secondaryId?'→'+botShot.secondaryId:''} a ${botShot.pocketId||'?'}${safetyTxt}${winTxt}${eloTxt}\nPot ${(ej.power*100).toFixed(0)}% efecto ${botShot.english.toFixed(2)}/${botShot.follow.toFixed(2)}`, 0);
   setTimeout(()=>{
     if(!game.over && !table.anyMoving() && !game.shotActive){
-      shoot(Math.max(0.08, Math.min(1, botShot.power)));
+      shoot(Math.max(0.08, Math.min(1, ej.power)));
     }
   }, 700);
 }
@@ -873,7 +1056,7 @@ function cpuTurn(){
   }
   game.cpuThinking = true;
   cpuProgress(0);
-  showMessage('CPU analizando mesa...', 1500);
+  showMessage('CPU analizando mesa...', 0);
   MetaBot.analyze(getStateForBot(),
     pct => cpuProgress(pct),
     result => {
@@ -994,6 +1177,7 @@ function evaluateShot() {
       showMessage(`Turno de ${playerLabel(game.current)}`, 1200);
     }
   }
+  if (shot.player != null) ratePlayerShot(shot.player);
   resetShot();
   /* Gancho del bot (placeholder): si el turno quedó del lado de la CPU
      y la partida sigue, el bot actuaría aquí. Hoy cpuTurn() es un no-op.
@@ -1516,6 +1700,33 @@ function drawCue(cueBall, aimAngle, power, english, follow) {
   }
 }
 
+function drawContactGhost() {
+  if (!cueBall || cueBall.pocketed || table.anyMoving() || game.shotActive || game.placing || game.over) return;
+  const cosA = Math.cos(aimAngle), sinA = Math.sin(aimAngle);
+  let best = null, bestDist = Infinity;
+  for (const b of table.balls) {
+    if (b.pocketed || b.id === 0) continue;
+    const dx = b.x - cueBall.x, dy = b.y - cueBall.y;
+    const proj = dx * cosA + dy * sinA;
+    if (proj <= 0) continue;
+    const perp2 = dx*dx + dy*dy - proj*proj;
+    const R2 = (2*BALL_R)*(2*BALL_R);
+    if (perp2 > R2) continue;
+    const d = proj - Math.sqrt(Math.max(0, R2 - perp2));
+    if (d < bestDist) { bestDist = d; best = b; }
+  }
+  if (!best) return;
+  const cx = cueBall.x + cosA * bestDist;
+  const cy = cueBall.y + sinA * bestDist;
+  ctx.beginPath();
+  ctx.arc(cx, cy, BALL_R * 0.35, 0, Math.PI*2);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+}
+
 function render() {
   // Limpiar todo el canvas en coordenadas de pixel, sin depender de MARGIN
   ctx.save();
@@ -1529,6 +1740,7 @@ function render() {
   drawPlacementGhost();
   drawPowerArrow(cueBall, aimAngle, power);
   drawCue(cueBall, aimAngle, power, english, follow);
+  drawContactGhost();
   if (DEBUG_POCKETS) drawDebugPockets();
 }
 
@@ -1545,7 +1757,13 @@ function showMessage(txt, ms = 2600) {
   msgEl.textContent = txt;
   msgEl.classList.add("show");
   clearTimeout(msgTimer);
-  msgTimer = setTimeout(() => msgEl.classList.remove("show"), ms);
+  /* ms <= 0: cartel persistente (turno del bot) hasta hideMessage()
+     o hasta que otro showMessage con temporizador lo reemplace */
+  if (ms > 0) msgTimer = setTimeout(() => msgEl.classList.remove("show"), ms);
+}
+function hideMessage() {
+  clearTimeout(msgTimer);
+  msgEl.classList.remove("show");
 }
 
 function getMousePos(e) {
@@ -1665,6 +1883,9 @@ function onPointerMove(e) {
 function shoot(p) {
   resetShot();
   game.shotActive = true;
+  shot.player = game.current;
+  shot.preState = getStateForBot();   // snapshot PRE-tiro (rateShot)
+  shot.params = { angle: aimAngle, power: p, english, follow };  // ejecución real
   shot.lowest = lowestBall();
   cueBall.dir = -aimAngle;
   cueBall.Nm = -aimAngle;
@@ -1758,7 +1979,7 @@ document.addEventListener("keydown", e => {
      y reconstruyen aimAngle de inmediato, sin tocar la potencia */
   if (!table.anyMoving() && !game.placing && !game.over) {
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      aimFineOffset += (e.key === "ArrowRight" ? 0.008 : -0.008);
+      aimFineOffset += (e.key === "ArrowRight" ? 0.001 : -0.001);
       aimFineOffset = normalizeAngle(aimFineOffset);
       rebuildAimAngle();
       e.preventDefault();
@@ -1919,6 +2140,11 @@ function startGame(mode) {
   game.over = false;
   game.shotActive = false;
   resetShot();
+  hideMessage();                        // limpia un cartel persistente del bot
+  Nivel.reset();
+  lastBotDecision = null;
+  lastShotInfo = null;
+  eloHud();
   english = 0;
   follow = 0;
   baseAimAngle = 0;
@@ -1977,7 +2203,232 @@ resize();
 startGame("8ball");
 requestAnimationFrame(loop);
 </script>
+<script>
+/* ============================================================
+   nivel.js — Control de fuerza del bot (canal A puro)
+   ------------------------------------------------------------
+   Encapsula TODO el sistema de equiparación decidido:
+
+     · medición  : residuo continuo del tiro del jugador
+     · filtro    : EWMA asimétrico + descuento analítico del trinquete
+     · control   : término de marcador unidireccional con horizonte 1/n²
+     · actuador  : ruido de ejecución σ inyectado en el disparo
+
+   NO decide qué tiro juega el bot: eso sigue siendo argmax de
+   MetaBot. Este módulo solo produce σ y perturba la ejecución.
+   ============================================================ */
+(function (global) {
+"use strict";
+
+const K_ELO   = 690;
+const SIG_REF = 4.2843 / (250 * (1 + 250 / 24));
+const sigmaOf = S => SIG_REF * Math.pow(10, (1618 - S) / K_ELO);
+const eloOf   = s => 1618 - (K_ELO / Math.LN10) * Math.log(s / SIG_REF);
+const sigmaPOf = S => 0.03 * Math.pow(10, (1618 - S) / K_ELO);
+
+const CFG = {
+  N_EF: 10,
+  COORD: 'auto',
+  DIST_REF: 250,
+  ASIM: 2.7,
+  DEBIAS: true,
+  S_INICIAL: 1500,
+  S_MIN: 1000, S_MAX: 2100,
+  C_BOLA: 100 / 3,
+  CAP: 100,
+  AUTO_DELTA0: true,
+  DELTA0_MANUAL: 0,
+  ALPHA_GIMME: 0.008,
+  GIMME_EXP: 2,
+  Q_AIM: 0.0010,
+  SEMILLA_FIJA: null,
+  REGIMEN: 'fantasma_q1.0'
+};
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashEstado(balls, turno) {
+  let h = 2166136261 >>> 0;
+  const mix = v => { h ^= (v | 0); h = Math.imul(h, 16777619) >>> 0; };
+  mix(turno);
+  for (const b of balls || []) { mix(b.id); mix(b.x * 16); mix(b.y * 16); }
+  return h;
+}
+function gauss(rnd) {
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+const phi = x => Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+const Phi = x => 0.5 * (1 + erf(x / Math.SQRT2));
+function erf(x) {
+  const s = x < 0 ? -1 : 1, ax = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * ax);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t
+              - 0.284496736) * t + 0.254829592) * t * Math.exp(-ax * ax);
+  return s * y;
+}
+function resolverM(r) {
+  if (r <= 1.0001) return 0;
+  const f = m => m * (Phi(m) + r * Phi(-m)) - (r - 1) * phi(m);
+  let lo = 0, hi = 5;
+  for (let i = 0; i < 80; i++) { const md = (lo + hi) / 2; if (f(md) < 0) lo = md; else hi = md; }
+  return (lo + hi) / 2;
+}
+
+let K_SUBE, K_BAJA, M_TRINQUETE;
+function recalibrar() {
+  const kb = 2 / (CFG.N_EF + 1);
+  K_SUBE = kb * 2 / (1 + CFG.ASIM);
+  K_BAJA = K_SUBE * CFG.ASIM;
+  M_TRINQUETE = resolverM(CFG.ASIM);
+}
+recalibrar();
+
+const st = {
+  S: CFG.S_INICIAL,
+  sInnov: 300,
+  n: 0,
+  delta0: 0,
+  deltaMedio: 0,
+  regSxy: 0, regSxx: 0, regSx: 0, regSy: 0, regN: 0,
+  log: []
+};
+
+function residuoElo(rec) {
+  if (rec == null || rec.alphaOpt == null || !isFinite(rec.alphaOpt)) return null;
+  let eps = normAng(rec.alphaEjec - rec.alphaOpt);
+  if (!isFinite(eps)) return null;
+  if (rec.alphaTol != null && rec.alphaTol > CFG.ALPHA_GIMME) return null;
+  const d = rec.distCT || CFG.DIST_REF;
+  const coord = CFG.COORD === 'pos' ? 'pos' : 'ang';
+  const epsEq = coord === 'pos' ? (eps * d) / CFG.DIST_REF : eps;
+  if (Math.abs(eps) > 1e-6 && d > 1) {
+    const x = Math.log(d), y = Math.log(Math.abs(eps));
+    st.regN++; st.regSx += x; st.regSy += y; st.regSxx += x * x; st.regSxy += x * y;
+  }
+  let ln_s2 = Math.log(Math.max(epsEq * epsEq, 1e-14)) + 1.27036;
+  let s2 = Math.exp(ln_s2);
+  s2 = Math.max(s2 - (CFG.Q_AIM * CFG.Q_AIM) / 12, 1e-14);
+  return clamp(eloOf(Math.sqrt(s2)), CFG.S_MIN - 300, CFG.S_MAX + 300);
+}
+
+function normAng(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function registrarTiro(rec) {
+  const sObs = residuoElo(rec);
+  st.log.push(Object.assign({ t: Date.now(), sObs }, rec));
+  if (sObs == null) return st.S;
+  const innov = sObs - st.S;
+  st.sInnov = Math.sqrt(0.95 * st.sInnov * st.sInnov + 0.05 * innov * innov);
+  st.S += (innov > 0 ? K_SUBE : K_BAJA) * innov;
+  st.S = clamp(st.S, CFG.S_MIN, CFG.S_MAX);
+  st.n++;
+  return st.S;
+}
+
+function registrarTiroBot(rec) {
+  st.log.push(Object.assign({ t: Date.now(), quien: 'bot',
+                              sObs: residuoElo(rec) }, rec));
+}
+
+function sJugador() {
+  return CFG.DEBIAS ? st.S + M_TRINQUETE * st.sInnov : st.S;
+}
+
+function deltaMarcador(nMias, nTuyas) {
+  const dif = (nMias | 0) - (nTuyas | 0);
+  const base = Math.max(0, Math.min(CFG.CAP, dif * CFG.C_BOLA));
+  if (base <= 0) return 0;
+  const h = 1 / Math.pow(Math.max(1, Math.min(nMias, nTuyas)), 2);
+  return base * h;
+}
+
+function sBot(ctx) {
+  const d = deltaMarcador(ctx && ctx.nMias, ctx && ctx.nTuyas);
+  return clamp(sJugador() + st.delta0 + d, CFG.S_MIN, CFG.S_MAX);
+}
+
+function perturbar(shot, ctx) {
+  const S = sBot(ctx);
+  const dNow = deltaMarcador(ctx && ctx.nMias, ctx && ctx.nTuyas);
+  st.deltaMedio = 0.99 * st.deltaMedio + 0.01 * dNow;
+  st.delta0 = CFG.AUTO_DELTA0 ? -st.deltaMedio : CFG.DELTA0_MANUAL;
+  const semilla = CFG.SEMILLA_FIJA != null
+    ? CFG.SEMILLA_FIJA
+    : hashEstado(ctx && ctx.balls, (ctx && ctx.turno) | 0);
+  const rnd = mulberry32(semilla);
+  let sigma = sigmaOf(S);
+  if (CFG.COORD === 'pos' && shot.distCT > 1)
+    sigma *= CFG.DIST_REF / shot.distCT;
+  const tol = shot.sigA;
+  if (tol != null && isFinite(tol) && tol > CFG.ALPHA_GIMME)
+    sigma *= Math.pow(CFG.ALPHA_GIMME / tol, CFG.GIMME_EXP);
+  const angle = shot.angle + gauss(rnd) * sigma;
+  const power = clamp(shot.power + gauss(rnd) * sigmaPOf(S), 0.08, 1);
+  return { angle, power, S_BOT: S, sigma,
+           delta: dNow };
+}
+
+function pendienteLogLog() {
+  if (st.regN < 8) return null;
+  const den = st.regN * st.regSxx - st.regSx * st.regSx;
+  if (Math.abs(den) < 1e-9) return null;
+  return (st.regN * st.regSxy - st.regSx * st.regSy) / den;
+}
+
+function diagnostico() {
+  const b = pendienteLogLog();
+  return {
+    S_filtrado: Math.round(st.S),
+    S_jugador: Math.round(sJugador()),
+    descuento: Math.round(M_TRINQUETE * st.sInnov),
+    sd_innovacion: Math.round(st.sInnov),
+    n: st.n,
+    delta0: Math.round(st.delta0),
+    n_ef: CFG.N_EF, K_sube: K_SUBE.toFixed(3), K_baja: K_BAJA.toFixed(3),
+    coord: CFG.COORD,
+    pendiente_logCT: b == null ? null : b.toFixed(2),
+    coord_sugerida: b == null ? '—' : (b < -0.5 ? 'pos' : 'ang'),
+    techo_medicion: Math.round(eloOf(CFG.Q_AIM / Math.sqrt(12))),
+    regimen: CFG.REGIMEN
+  };
+}
+
+function csv() {
+  const cols = ['t','quien','objetivo','tronera','emboco','alphaEjec','alphaOpt',
+                'pEjec','pOpt','distCT','alphaTol','aimFineOffset','sObs'];
+  const esc = v => (v == null ? '' : String(v));
+  return [cols.join(',')].concat(
+    st.log.map(r => cols.map(c => esc(r[c])).join(','))).join('\n');
+}
+
+function reset(regimen) {
+  st.S = CFG.S_INICIAL; st.sInnov = 300; st.n = 0;
+  st.delta0 = 0; st.deltaMedio = 0;
+  st.regSxy = st.regSxx = st.regSx = st.regSy = st.regN = 0;
+  st.log.length = 0;
+  if (regimen) CFG.REGIMEN = regimen;
+}
+
+global.Nivel = Object.freeze({
+  CFG, registrarTiro, registrarTiroBot, sBot, sJugador,
+  deltaMarcador, perturbar, diagnostico, csv, reset, recalibrar,
+  sigmaOf, eloOf, sigmaPOf
+});
+
+})(typeof globalThis !== "undefined" ? globalThis : window);
+</script>
 <!-- Bot CPU síncrono por lotes (script clásico: funciona desde file://) -->
-<script src="./bot_billar.js"></script>
+<script src="./bot_billar_3586.js"></script>
 </body>
 </html>
